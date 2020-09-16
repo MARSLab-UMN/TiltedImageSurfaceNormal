@@ -8,9 +8,9 @@ import cv2
 import os
 
 class KinectAzureDataset(Dataset):
-    def __init__(self, root='/mars/mnt/dgx/KinectAzure/',
+    def __init__(self, root='./datasets/KinectAzure',
                        usage='test_full',
-                       train_test_split = './data/kinect_azure_test_datasets.pkl'):
+                       train_test_split='./data/kinect_azure_test_datasets.pkl'):
         # Transforms
         self.root = root
         self.to_tensor = transforms.ToTensor()
@@ -47,6 +47,7 @@ class KinectAzureDataset(Dataset):
 
     def __len__(self):
         return self.data_len
+
 
 class KinectAzureDataset2DOFAlignment(Dataset):
     def __init__(self, root='/mars/mnt/dgx/KinectAzure/',
@@ -104,6 +105,7 @@ class KinectAzureDataset2DOFAlignment(Dataset):
 
     def __len__(self):
         return self.data_len
+
 
 class KinectAzureDistributionMatch(Dataset):
     def __init__(self, root='/mars/mnt/oitstorage/tien_storage/SurfaceNormal_eccv2020/',

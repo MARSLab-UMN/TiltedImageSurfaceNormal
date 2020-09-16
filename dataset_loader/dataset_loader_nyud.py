@@ -12,7 +12,7 @@ import os
 class NYUD_Dataset(Dataset):
     def __init__(self, usage='test'):
         self.to_tensor = transforms.ToTensor()
-        self.root = '/mars/mnt/dgx/nyu-normal'
+        self.root = './datasets/nyu-normal'
         self.idx = [int(line.rstrip('\n')) for line in open(os.path.join(self.root, 'testsplit.txt'))]
         self.data_len = len(self.idx)
 

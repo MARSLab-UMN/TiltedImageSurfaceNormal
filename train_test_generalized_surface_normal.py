@@ -241,13 +241,14 @@ def create_dataset_loader(config):
         train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
                                       shuffle=True, num_workers=16, pin_memory=True)
 
-        test_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
-        test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-                                     shuffle=False, num_workers=16)
-
-        # test_dataset = Scannet2DOFAlignmentDataset(usage='test')
-        # test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-        #                               shuffle=False, num_workers=16)
+        if config['TEST_DATASET'] == 'scannet_2dof_alignment':
+            test_dataset = Scannet2DOFAlignmentDataset(usage='test')
+            test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
+                                          shuffle=False, num_workers=16)
+        else:
+            test_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
+            test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
+                                         shuffle=False, num_workers=16)
 
         val_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
         val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
