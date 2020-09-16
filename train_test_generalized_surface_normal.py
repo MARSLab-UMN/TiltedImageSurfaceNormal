@@ -501,18 +501,20 @@ if __name__ == '__main__':
                     log('Epoch %d, Iter %d, Loss %.4f' % (epoch, iter, logging_losses), training_loss_file)
 
                 # Step 6f. Print robust evaluation stats
+                # Step 6f. Print robust evaluation stats
                 if epoch == 0:
                     if iter % 600 == 0 and iter > 0:
-                        # Reload closest checkpoint if hit nan
                         if check_nan_ckpt(cnn):
-                            if iter > 6000:
-                                iter = int((np.ceil(iter / 6000) - 1) * 6000)
-                            else:
+                            if iter < 6000:
                                 exit()
 
-                            print('Nan ckpt detected, reset optimizer and reload ckpt ep=', epoch, ', iter=', iter)
-                            cnn.load_state_dict(torch.load(config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt' % (epoch, iter)))
-                            optimizer = torch.optim.Adam(cnn.parameters(), lr=config['LEARNING_RATE'], betas=(0.9, 0.999))
+                            cnn.load_state_dict(torch.load(config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt'
+                                                           % (last_ckpt['epoch'], last_ckpt['iter'])))
+                            optimizer.load_state_dict(
+                                torch.load(config['LOG_FOLDER'] + '/optimizer-epoch-%05d-iter-%05d.ckpt'
+                                           % (last_ckpt['epoch'], last_ckpt['iter'])))
+                            log('Getting Nan, reloading model from ep: %d, iter: %d'
+                                % (last_ckpt['epoch'], last_ckpt['iter']), training_loss_file)
 
                         evaluation_mode = 'evaluate' + config['OPERATION'][len('train'):] if 'mix_loss' in config['OPERATION'] else 'evaluate'
                         total_normal_errors = None
@@ -540,18 +542,13 @@ if __name__ == '__main__':
                     if iter % 600 == 0:
                         # Reload closest checkpoint if hit nan
                         if check_nan_ckpt(cnn):
-                            if iter > 6000:
-                                iter = int((np.ceil(iter/6000)-1)*6000)
-                            else:
-                                if epoch == 0:
-                                    exit()
-                                else:
-                                    epoch -= 1
-                                    iter = int((np.ceil(len(train_dataloader)/6000)-1)*6000)
-
-                            print('Nan ckpt detected, reset optimizer and reload ckpt ep=', epoch, ', iter=', iter)
-                            cnn.load_state_dict(torch.load(config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt' % (epoch, iter)))
-                            optimizer = torch.optim.Adam(cnn.parameters(), lr=config['LEARNING_RATE'], betas=(0.9, 0.999))
+                            cnn.load_state_dict(torch.load(config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt'
+                                                           % (last_ckpt['epoch'], last_ckpt['iter'])))
+                            optimizer.load_state_dict(
+                                torch.load(config['LOG_FOLDER'] + '/optimizer-epoch-%05d-iter-%05d.ckpt'
+                                           % (last_ckpt['epoch'], last_ckpt['iter'])))
+                            log('Getting Nan, reloading model from ep: %d, iter: %d'
+                                % (last_ckpt['epoch'], last_ckpt['iter']), training_loss_file)
 
                         evaluation_mode = 'evaluate' + config['OPERATION'][len('train'):] if 'mix_loss' in config['OPERATION'] else 'evaluate'
                         total_normal_errors = None
@@ -579,6 +576,10 @@ if __name__ == '__main__':
                 if iter % 6000 == 0:
                     path = config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt' % (epoch, iter)
                     torch.save(cnn.state_dict(), path)
+                    path = config['LOG_FOLDER'] + '/optimizer-epoch-%05d-iter-%05d.ckpt' % (epoch, iter)
+                    torch.save(optimizer.state_dict(), path)
+                    last_ckpt['epoch'] = epoch
+                    last_ckpt['iter'] = iter
     else:
         cnn.eval()
         total_normal_errors = None

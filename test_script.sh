@@ -96,7 +96,7 @@ python train_test_generalized_surface_normal.py \
                      --test_dataset 'kinect_azure_unseen_viewing_directions' \
                      --net_architecture 'sr_pfpn' \
                      --batch_size 128
-## PFPN+TAL
+# PFPN+TAL
 python train_test_generalized_surface_normal.py \
                      --checkpoint_path '/mars/mnt/oitstorage/khiem_storage/ECCV_results/release/PFPN.ckpt' \
                      --operation 'evaluate' \
