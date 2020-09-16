@@ -7,6 +7,7 @@ import math
 from warping_2dof_alignment import Warping2DOFAlignment
 import numpy as np
 
+
 def weights_init(modules, type='xavier'):
     m = modules
     if isinstance(m, nn.Conv2d):

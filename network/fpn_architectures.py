@@ -4,6 +4,8 @@ from torch.nn import functional as F
 import torchvision.models
 import collections
 import math
+from warping_2dof_alignment import Warping2DOFAlignment
+import numpy as np
 
 
 def weights_init(modules, type='xavier'):
@@ -265,9 +267,9 @@ class ASPP(nn.Module):
         return torch.cat((d1, d2, d3, d4), dim=1)
 
 
-class PlainFPN(nn.Module):
+class PFPN(nn.Module):
     def __init__(self, output_size=(240, 320), in_channels=3, training_mode='train_L2_loss', backbone='resnet101'):
-        super(PlainFPN, self).__init__()
+        super(PFPN, self).__init__()
         self.output_size = output_size
         self.mode = training_mode
         self.resnet_pyramids = ResNetPyramids(in_channels=in_channels, pretrained=True, backbone=backbone)
@@ -316,9 +318,9 @@ class PlainFPN(nn.Module):
         return y
 
 
-class ASPP_FPN(nn.Module):
+class DFPN(nn.Module):
     def __init__(self, output_size=(240, 320), in_channels=3, training_mode='train_L2_loss', backbone='resnext101'):
-        super(ASPP_FPN, self).__init__()
+        super(DFPN, self).__init__()
         self.output_size = output_size
         self.mode = training_mode
         self.resnet_pyramids = ResNetPyramids(in_channels=in_channels, pretrained=True, backbone=backbone)
@@ -351,7 +353,6 @@ class ASPP_FPN(nn.Module):
             nn.UpsamplingBilinear2d(size=(240, 320)),
         )
 
-
     def forward(self, x):
         features = self.resnet_pyramids(x)
         z1 = self.feature1_upsampling(features['x1'])
@@ -361,4 +362,239 @@ class ASPP_FPN(nn.Module):
 
         y = self.feature_concat(z1 + z2 + z3 + z4)
 
+        return y
+
+
+class MFPN(nn.Module):
+    def __init__(self, output_size=(240, 320), in_channels=3, training_mode='train_L2_loss', use_mask=False, backbone='resnet101'):
+        super(MFPN, self).__init__()
+        self.output_size = output_size
+        self.mode = training_mode
+        self.resnet_pyramids = ResNetPyramids(in_channels=in_channels, pretrained=True, backbone=backbone)
+        self.use_mask = use_mask
+        self.feature1_upsamping = nn.Sequential(
+            nn.Conv2d(256, 256, 3, 1, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 128, 1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+        )
+        self.feature2_upsamping = nn.Sequential(
+            nn.Conv2d(512, 256, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, 1, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(60, 80)),
+            nn.Conv2d(256, 128, 1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+        )
+        self.feature3_upsamping = nn.Sequential(
+            nn.Conv2d(1024, 512, 1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, 1, 1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(30, 40)),
+            nn.Conv2d(512, 256, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, 1, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(60, 80)),
+            nn.Conv2d(256, 128, 1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+        )
+        self.feature4_upsamping = nn.Sequential(
+            nn.Conv2d(2048, 1024, 1),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(1024, 1024, 3, 1, 1),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(15, 20)),
+            nn.Conv2d(1024, 512, 1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, 1, 1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(30, 40)),
+            nn.Conv2d(512, 256, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, 1, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(60, 80)),
+            nn.Conv2d(256, 128, 1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+        )
+
+        if 'mix_loss' in training_mode:
+            self.feature_concat = nn.Sequential(
+                # nn.Conv2d(256, 128, 3, 1, 1),
+                # nn.ReLU(inplace=True),
+                nn.Conv2d(128, 64, 3, 1, 1),
+                nn.ReLU(inplace=True),
+                # nn.Dropout2d(0.5),
+                nn.Conv2d(64, 3, 1),
+            )
+        else:
+            self.feature_concat = nn.Sequential(
+                # nn.Dropout2d(0.5),
+                # nn.Conv2d(256, 128, 1),
+                # nn.ReLU(inplace=True),
+                nn.Conv2d(128, 64, 3, 1, 1),
+                nn.ReLU(inplace=True),
+                # nn.Dropout2d(0.5),
+                nn.Conv2d(64, 3, 1, 1, 1),
+                nn.UpsamplingBilinear2d(size=(240, 320)),
+            )
+
+        # weights_init(self.feature_concat, type='xavier')
+
+    def forward(self, x):
+        features = self.resnet_pyramids(x)
+        if self.use_mask:
+            feature_mask = x[:, 0:1] + x[:, 1:2] + x[:, 2:3] > 1e-2
+            feature_mask = feature_mask.float().detach()
+            feature1_mask = nn.functional.interpolate(feature_mask, size=(60, 80), mode='nearest')
+            feature2_mask = nn.functional.interpolate(feature_mask, size=(30, 40), mode='nearest')
+            feature3_mask = nn.functional.interpolate(feature_mask, size=(15, 20), mode='nearest')
+            feature4_mask = nn.functional.interpolate(feature_mask, size=(8, 10), mode='nearest')
+
+            z1 = self.feature1_upsamping(features['x1'] * feature1_mask)
+            z2 = self.feature2_upsamping(features['x2'] * feature2_mask)
+            z3 = self.feature3_upsamping(features['x3'] * feature3_mask)
+            z4 = self.feature4_upsamping(features['x4'] * feature4_mask)
+            y = self.feature_concat((z1 + z2 + z3 + z4) * feature1_mask)
+            return y
+        else:
+            z1 = self.feature1_upsamping(features['x1'])
+            z2 = self.feature2_upsamping(features['x2'])
+            z3 = self.feature3_upsamping(features['x3'])
+            z4 = self.feature4_upsamping(features['x4'])
+            y = self.feature_concat(z1 + z2 + z3 + z4)
+            return y
+
+
+class FPNWarpInputMultiDirections(nn.Module):
+    def __init__(self, output_size=(240, 320), in_channels=3,
+                    training_mode='train_L2_loss',
+                    fc_img=np.array([0.5 * 577.87061, 0.5 * 580.25851]),
+                    cc_img=np.array([0.5 * 319.87654, 0.5 * 239.87603]),
+                    use_mask=False):
+        super(FPNWarpInputMultiDirections, self).__init__()
+        self.output_size = output_size
+        self.mode = training_mode
+        self.use_mask = use_mask
+
+        fc = fc_img
+        cc = cc_img
+        self.warp_2dof_alignment = Warping2DOFAlignment(fx=fc[0], fy=fc[1], cx=cc[0], cy=cc[1])
+
+        self.resnet_pyramids = ResNetPyramids(in_channels=in_channels, pretrained=True, backbone='resnet101')
+        self.feature1_upsamping = nn.Sequential(
+            nn.Conv2d(256, 256, 3, 1, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 128, 1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+        )
+        self.feature2_upsamping = nn.Sequential(
+            nn.Conv2d(512, 256, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, 1, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(60, 80)),
+            nn.Conv2d(256, 128, 1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+        )
+        self.feature3_upsamping = nn.Sequential(
+            nn.Conv2d(1024, 512, 1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, 1, 1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(30, 40)),
+            nn.Conv2d(512, 256, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, 1, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(60, 80)),
+            nn.Conv2d(256, 128, 1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+        )
+
+        self.feature4_upsamping = nn.Sequential(
+            nn.Conv2d(2048, 1024, 1),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(1024, 1024, 3, 1, 1),
+            nn.BatchNorm2d(1024),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(15, 20)),
+            nn.Conv2d(1024, 512, 1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(512, 512, 3, 1, 1),
+            nn.BatchNorm2d(512),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(30, 40)),
+            nn.Conv2d(512, 256, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(256, 256, 3, 1, 1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.UpsamplingBilinear2d(size=(60, 80)),
+            nn.Conv2d(256, 128, 1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+        )
+
+        self.feature_concat = nn.Sequential(
+            nn.Conv2d(128, 64, 3, 1, 1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(64, 3, 1),
+            nn.UpsamplingBilinear2d(size=(240, 320)),
+        )
+
+    def forward(self, x):
+        features = self.resnet_pyramids(x)
+        if self.use_mask:
+            feature_mask = x1[:, 0:1] + x1[:, 1:2] + x1[:, 2:3] > 1e-2
+            feature_mask = feature_mask.float().detach()
+            feature1_mask = nn.functional.interpolate(feature_mask, size=(60, 80), mode='nearest')
+            feature2_mask = nn.functional.interpolate(feature_mask, size=(30, 40), mode='nearest')
+            feature3_mask = nn.functional.interpolate(feature_mask, size=(15, 20), mode='nearest')
+            feature4_mask = nn.functional.interpolate(feature_mask, size=(8, 10), mode='nearest')
+
+            z1 = self.feature1_upsamping(features['x1'] * feature1_mask)
+            z2 = self.feature2_upsamping(features['x2'] * feature2_mask)
+            z3 = self.feature3_upsamping(features['x3'] * feature3_mask)
+            z4 = self.feature4_upsamping(features['x4'] * feature4_mask)
+            y = self.feature_concat((z1 + z2 + z3 + z4) * feature1_mask)
+        else:
+            z1 = self.feature1_upsamping(features['x1'])
+            z2 = self.feature2_upsamping(features['x2'])
+            z3 = self.feature3_upsamping(features['x3'])
+            z4 = self.feature4_upsamping(features['x4'])
+            y = self.feature_concat(z1 + z2 + z3 + z4)
         return y

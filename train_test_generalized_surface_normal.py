@@ -2,20 +2,15 @@ import torch
 import numpy as np
 import skimage.io as sio
 import argparse
-from dataset_loader.dataset_framenet import AffineDataset
-from dataset_loader.dataset_framenet import AffineTestsDataset
 from torch.utils.data import DataLoader
-from network import dorn_architecture, dorn_framenet, fpn_architecture, fpn_architectures, stn_fpn
+from network import dorn_architecture, fpn_architectures, stn_fpn
 from dataset_loader.dataset_loader_scannet import ScannetDataset
 from dataset_loader.dataset_loader_scannet import Scannet2DOFAlignmentDataset
 from dataset_loader.dataset_loader_nyud import NYUD_Dataset
 from dataset_loader.dataset_loader_kinectazure import KinectAzureDataset
-from dataset_loader.dataset_loader_kinectazure import KinectAzureDataset2DOFAlignment
-from dataset_loader.dataset_loader_kinectazure import KinectAzureDistributionMatch
 import os
 import cv2
 from warping_2dof_alignment import Warping2DOFAlignment
-import vis_utils
 
 
 def parsing_configurations():
@@ -25,17 +20,21 @@ def parsing_configurations():
     parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--rectified_checkpoint_path', type=str, default='')
+    parser.add_argument('--sr_checkpoint_path', type=str,
+                        default='/mars/mnt/oitstorage/tien_storage/FPN_warping/spatial_rectifier_2nd_trial/model-epoch-00016-iter-24000.ckpt')
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--train_dataset', type=str, default='./data/framenet_train_test_split.pkl')
     parser.add_argument('--test_dataset', type=str, default='./data/framenet_train_test_split.pkl')
     parser.add_argument('--net_architecture', type=str, default='dorn')
     parser.add_argument('--optimizer', type=str, default='adam')
     parser.add_argument('--augmentation', type=str, default='')
+
     args = parser.parse_args()
 
     config = {'LOG_FOLDER': args.log_folder,
               'CKPT_PATH': args.checkpoint_path,
               'RECTIFIED_CKPT_PATH': args.rectified_checkpoint_path,
+              'SR_CKPT_PATH': args.sr_checkpoint_path,
               'OPERATION': args.operation,
               'BATCH_SIZE': args.batch_size,
               'LEARNING_RATE': args.learning_rate,
@@ -90,7 +89,7 @@ def compute_surface_normal_angle_error(sample_batched, output_pred, mode='evalua
             mask = sample_batched['mask'] > 0
             return torch.sum(prediction_error[mask]), 0.5*torch.mean(prediction_error[mask])
 
-        elif mode == 'train_acos_loss':
+        elif mode == 'train_AL_loss':
             mask = sample_batched['mask'] > 0
             prediction_error = torch.cosine_similarity(surface_normal_pred, sample_batched['Z'], dim=1, eps=1e-6)
             acos_mask = mask.float() \
@@ -100,7 +99,7 @@ def compute_surface_normal_angle_error(sample_batched, output_pred, mode='evalua
             logging_loss = torch.mean(torch.acos(prediction_error[acos_mask]))
             return optimize_loss, logging_loss
 
-        elif mode == 'train_robust_acos_loss':
+        elif mode == 'train_TAL_loss':
             mask = sample_batched['mask'] > 0
             prediction_error = torch.cosine_similarity(surface_normal_pred, sample_batched['Z'], dim=1, eps=1e-6)
             # Robust acos loss
@@ -165,25 +164,6 @@ def compute_surface_normal_angle_error(sample_batched, output_pred, mode='evalua
             logging_loss = 0.5*(1.0-torch.mean(prediction_error_g) + 1.0-torch.mean(prediction_error_a))
             return optimize_loss, logging_loss
 
-    ## NOTE: Case for loading dataset with original framenet
-    surface_normal_pred = output_pred[:, 10:13]
-    if mode == 'evaluate':
-        prediction_error = torch.cosine_similarity(surface_normal_pred,
-                                                   torch.cross(sample_batched['X'], sample_batched['Y']))
-        prediction_error = torch.clamp(prediction_error, min=-1.0, max=1.0)
-        return torch.acos(prediction_error) * 180.0 / np.pi
-    elif mode == 'train_L2_loss':
-        prediction_error = torch.cosine_similarity(surface_normal_pred,
-                                                   torch.cross(sample_batched['X'], sample_batched['Y'], dim=1))
-        mask = sample_batched['mask'] > 0
-        return -torch.sum(prediction_error[mask]), 1.0-torch.mean(prediction_error[mask])
-    elif mode == 'train_L2_explicit_normalize':
-        surface_normal_pred = Normalize(surface_normal_pred)
-        surface_normal_gt = Normalize(torch.cross(sample_batched['X'], sample_batched['Y'], dim=1))
-        prediction_error = torch.sum((surface_normal_pred - surface_normal_gt) ** 2, dim=1)
-        mask = sample_batched['mask'] > 0
-        return torch.sum(prediction_error[mask]), 0.5*torch.mean(prediction_error[mask])
-
 
 total_normal_errors = None
 
@@ -216,8 +196,9 @@ def log_normal_stats(epoch, iter, normal_error_in_angle, fp=None):
         np.sum(normal_error_in_angle < 22.5) / normal_error_in_angle.shape[0],
         np.sum(normal_error_in_angle < 30) / normal_error_in_angle.shape[0]))
 
+
 # TODO: clean up this dataset_loader?
-def create_dataset_loader(config, option='original_framenet_loader'):
+def create_dataset_loader(config):
     # Right now nyud only used for testing
     if config['TEST_DATASET'] == 'nyud':
         train_dataset = NYUD_Dataset()
@@ -231,67 +212,28 @@ def create_dataset_loader(config, option='original_framenet_loader'):
         val_dataset = NYUD_Dataset()
         val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
                                     shuffle=False, num_workers=4)
+
         return train_dataloader, test_dataloader, val_dataloader
 
-    if 'kinect_azure_video' in config['TEST_DATASET']:
-        train_dataloader = []
+    if 'kinect_azure' in config['TEST_DATASET']:
+        train_dataset = KinectAzureDataset()
+        train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
+                                        shuffle=True, num_workers=16, pin_memory=True)
 
-        test_dataset = KinectAzureDataset(usage='test_full', train_test_split='./data/%s' % config['TEST_DATASET'])
-        test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'], shuffle=False, num_workers=16)
+        if config['TEST_DATASET'] == 'kinect_azure_full':
+            test_dataset = KinectAzureDataset(usage='test_full')
+        elif config['TEST_DATASET'] == 'kinect_azure_biased_viewing_directions':
+            test_dataset = KinectAzureDataset(usage='test_biased_viewing_directions')
+        elif config['TEST_DATASET'] == 'kinect_azure_unseen_viewing_directions':
+            test_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
 
-        val_dataloader = []
-        return train_dataloader, test_dataloader, val_dataloader
+        test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
+                                     shuffle=False, num_workers=16)
 
-    elif 'kinect_azure' in config['TEST_DATASET']:
-        if config['TEST_DATASET'] == 'kinect_azure_disitribution_match':
-            train_dataset = KinectAzureDataset2DOFAlignment()
-            train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
-                                          shuffle=True, num_workers=16, pin_memory=True)
-            test_dataset = KinectAzureDistributionMatch(usage='test_full')
-            test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-                                         shuffle=False, num_workers=16)
+        val_dataset = KinectAzureDataset()
+        val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
+                                    shuffle=False, num_workers=4)
 
-            val_dataset = KinectAzureDataset2DOFAlignment()
-            val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
-                                        shuffle=False, num_workers=4)
-            return train_dataloader, test_dataloader, val_dataloader
-
-        if config['ARCHITECTURE'] == 'fpn_warp_input_multi_directions':
-            train_dataset = KinectAzureDataset2DOFAlignment()
-            train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
-                                          shuffle=True, num_workers=16, pin_memory=True)
-
-            if config['TEST_DATASET'] == 'kinect_azure_full':
-                test_dataset = KinectAzureDataset2DOFAlignment(usage='test_full')
-            elif config['TEST_DATASET'] == 'kinect_azure_biased_viewing_directions':
-                test_dataset = KinectAzureDataset2DOFAlignment(usage='test_biased_viewing_directions')
-            elif config['TEST_DATASET'] == 'kinect_azure_unseen_viewing_directions':
-                test_dataset = KinectAzureDataset2DOFAlignment(usage='test_unseen_viewing_directions')
-
-            test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-                                         shuffle=False, num_workers=16)
-
-            val_dataset = KinectAzureDataset2DOFAlignment()
-            val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
-                                        shuffle=False, num_workers=4)
-        else:
-            train_dataset = KinectAzureDataset()
-            train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
-                                            shuffle=True, num_workers=16, pin_memory=True)
-
-            if config['TEST_DATASET'] == 'kinect_azure_full':
-                test_dataset = KinectAzureDataset(usage='test_full')
-            elif config['TEST_DATASET'] == 'kinect_azure_biased_viewing_directions':
-                test_dataset = KinectAzureDataset(usage='test_biased_viewing_directions')
-            elif config['TEST_DATASET'] == 'kinect_azure_unseen_viewing_directions':
-                test_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
-
-            test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-                                         shuffle=False, num_workers=16)
-
-            val_dataset = KinectAzureDataset()
-            val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
-                                        shuffle=False, num_workers=4)
         return train_dataloader, test_dataloader, val_dataloader
 
     if config['TRAIN_DATASET'] == 'scannet_2dof_alignment':
@@ -312,83 +254,79 @@ def create_dataset_loader(config, option='original_framenet_loader'):
                                     shuffle=False, num_workers=16)
         return train_dataloader, test_dataloader, val_dataloader
 
-    if config['AUGMENTATION'] == 'random_warp_input':
-        train_dataset = ScannetDataset(usage='train', train_test_split=config['TRAIN_DATASET'])
-        train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
-                                        shuffle=True, num_workers=16, pin_memory=True)
+    # TODO: remove?
+    # if config['AUGMENTATION'] == 'random_warp_input':
+    #     train_dataset = ScannetDataset(usage='train', train_test_split=config['TRAIN_DATASET'])
+    #     train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
+    #                                     shuffle=True, num_workers=16, pin_memory=True)
+    #
+    #     test_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
+    #     test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
+    #                                  shuffle=False, num_workers=16)
+    #
+    #     # test_dataset = Scannet2DOFAlignmentDataset(usage='test')
+    #     # test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
+    #     #                              shuffle=False, num_workers=16)
+    #
+    #     val_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
+    #     val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
+    #                                 shuffle=False, num_workers=4)
+    #     return train_dataloader, test_dataloader, val_dataloader
 
-        test_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
-        test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-                                     shuffle=False, num_workers=16)
+    # Standard train/test split on ScanNet
+    if config['TEST_DATASET'] == 'scannet_standard':
+        config['TEST_DATASET'] = './data/scannet_standard_train_test_val_split.pkl'
+    if config['TRAIN_DATASET'] == 'scannet_standard':
+        config['TRAIN_DATASET'] = './data/scannet_standard_train_test_val_split.pkl'
 
-        # test_dataset = Scannet2DOFAlignmentDataset(usage='test')
-        # test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-        #                              shuffle=False, num_workers=16)
+    train_dataset = ScannetDataset(usage='train', train_test_split=config['TRAIN_DATASET'])
+    train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
+                                    shuffle=True, num_workers=16, pin_memory=True)
 
-        val_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
-        val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
-                                    shuffle=False, num_workers=4)
-        return train_dataloader, test_dataloader, val_dataloader
+    test_dataset = ScannetDataset(usage='test', train_test_split=config['TEST_DATASET'])
+    test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
+                                 shuffle=False, num_workers=4)
 
-    if option == 'original_framenet_loader':
-        train_dataset = AffineDataset(usage='train')
-        train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
-                                      shuffle=True, num_workers=16, pin_memory=True)
+    val_dataset = ScannetDataset(usage='test', train_test_split=config['TEST_DATASET'])
+    val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
+                                shuffle=False, num_workers=4)
 
-        test_dataset = AffineTestsDataset(usage='test')
-        test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-                                     shuffle=False, num_workers=4)
-
-        val_dataset = AffineTestsDataset(usage='test')
-        val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
-                                    shuffle=False, num_workers=4)
-    else:
-        train_dataset = ScannetDataset(usage='train', train_test_split=config['TRAIN_DATASET'])
-        train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
-                                        shuffle=True, num_workers=16, pin_memory=True)
-
-        test_dataset = ScannetDataset(usage='test', train_test_split=config['TEST_DATASET'])
-        test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-                                     shuffle=False, num_workers=4)
-
-        val_dataset = ScannetDataset(usage='test', train_test_split=config['TEST_DATASET'])
-        val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
-                                    shuffle=False, num_workers=4)
     return train_dataloader, test_dataloader, val_dataloader
 
 
 def create_network(config):
-    if config['ARCHITECTURE'] == 'dorn_framenet':
-        cnn = dorn_framenet.DORNFrameNet(channel=5, output_channel=13)
-    elif config['ARCHITECTURE'] == 'dorn':
+    if config['ARCHITECTURE'] == 'dorn':
         cnn = dorn_architecture.DORN(output_channel=3, training_mode=config['OPERATION'])
     elif config['ARCHITECTURE'] == 'dorn_batchnorm':
         cnn = dorn_architecture.DORNBN(output_channel=3, training_mode=config['OPERATION'])
-    elif config['ARCHITECTURE'] == 'plain_fpn':
-        cnn = fpn_architectures.PlainFPN(in_channels=3, training_mode=config['OPERATION'], backbone='resnet101')
-    elif config['ARCHITECTURE'] == 'fpn':
-        # TODO: what should be here?
-        cnn = fpn_architecture.ModifiedFPN(in_channels=3, training_mode=config['OPERATION'])
-        # cnn = fpn_architectures.PlainFPN()
-    elif config['ARCHITECTURE'] == 'aspp_fpn':
-        cnn = fpn_architectures.ASPP_FPN(backbone='resnext101')
+    elif config['ARCHITECTURE'] == 'pfpn':
+        cnn = fpn_architectures.PFPN(in_channels=3, training_mode=config['OPERATION'], backbone='resnet101')
+    elif config['ARCHITECTURE'] == 'mfpn':
+        cnn = fpn_architectures.MFPN(in_channels=3, training_mode=config['OPERATION'])
+    elif config['ARCHITECTURE'] == 'dfpn':
+        cnn = fpn_architectures.DFPN(backbone='resnext101')
     elif config['ARCHITECTURE'] == 'spatial_rectifier':
         cnn = stn_fpn.SpatialRectifier()
-    elif config['ARCHITECTURE'] == 'sr_fpn':
+    elif config['ARCHITECTURE'] == 'sr_pfpn':
         if 'kinect_azure' in config['TEST_DATASET']:
-            cnn = stn_fpn.SpatialRectifierFPN()
+            cnn = stn_fpn.SpatialRectifierPFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
         else:
-            cnn = stn_fpn.SpatialRectifierFPN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'])
+            cnn = stn_fpn.SpatialRectifierPFPN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
+    elif config['ARCHITECTURE'] == 'sr_mfpn':
+        if 'kinect_azure' in config['TEST_DATASET']:
+            cnn = stn_fpn.SpatialRectifierMFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
+        else:
+            cnn = stn_fpn.SpatialRectifierMFPN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
     elif config['ARCHITECTURE'] == 'sr_dfpn':
         if 'kinect_azure' in config['TEST_DATASET']:
-            cnn = stn_fpn.SpatialRectifierDFPN()
+            cnn = stn_fpn.SpatialRectifierDFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
         else:
-            cnn = stn_fpn.SpatialRectifierDFPN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'])
+            cnn = stn_fpn.SpatialRectifierDFPN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
     elif config['ARCHITECTURE'] == 'sr_dorn':
         if 'kinect_azure' in config['TEST_DATASET']:
-            cnn = stn_fpn.SpatialRectifierDORN()
+            cnn = stn_fpn.SpatialRectifierDORN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
         else:
-            cnn = stn_fpn.SpatialRectifierDORN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'])
+            cnn = stn_fpn.SpatialRectifierDORN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
 
     cnn = cnn.cuda()
 
@@ -396,13 +334,16 @@ def create_network(config):
 
 
 _saving_indices = 0
+
+
 def forward_cnn(sample_batched, cnn, config):
     if config['ARCHITECTURE'] == 'spatial_rectifier':
         v = cnn(sample_batched['image'])
         output_prediction = {'I_g': v[:, 0:3], 'I_a': v[:, 3:6]}
 
     elif config['ARCHITECTURE'] == 'sr_dfpn' or \
-            config['ARCHITECTURE'] == 'sr_fpn' or \
+            config['ARCHITECTURE'] == 'sr_pfpn' or \
+            config['ARCHITECTURE'] == 'sr_mfpn' or \
             config['ARCHITECTURE'] == 'sr_dorn':
         output_prediction = cnn(sample_batched['image'])
         if config['OPERATION'] == 'evaluate':
@@ -516,12 +457,7 @@ if __name__ == '__main__':
     log(config, evaluate_stat_file)
 
     # Step 2. Create dataset loader
-    if config['ARCHITECTURE'] == 'dorn_framenet':
-        train_dataloader, test_dataloader, val_dataloader = create_dataset_loader(config,
-                                                                                  option='original_framenet_loader')
-    else:
-        train_dataloader, test_dataloader, val_dataloader = create_dataset_loader(config,
-                                                                                  option='new_dataset_loader')
+    train_dataloader, test_dataloader, val_dataloader = create_dataset_loader(config)
 
     # Step 3. Create cnn
     cnn = create_network(config)
@@ -574,6 +510,17 @@ if __name__ == '__main__':
                 # Step 6f. Print robust evaluation stats
                 if epoch == 0:
                     if iter % 600 == 0 and iter > 0:
+                        # Reload closest checkpoint if hit nan
+                        if check_nan_ckpt(cnn):
+                            if iter > 6000:
+                                iter = int((np.ceil(iter / 6000) - 1) * 6000)
+                            else:
+                                exit()
+
+                            print('Nan ckpt detected, reset optimizer and reload ckpt ep=', epoch, ', iter=', iter)
+                            cnn.load_state_dict(torch.load(config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt' % (epoch, iter)))
+                            optimizer = torch.optim.Adam(cnn.parameters(), lr=config['LEARNING_RATE'], betas=(0.9, 0.999))
+
                         evaluation_mode = 'evaluate' + config['OPERATION'][len('train'):] if 'mix_loss' in config['OPERATION'] else 'evaluate'
                         total_normal_errors = None
                         with torch.no_grad():
@@ -608,13 +555,16 @@ if __name__ == '__main__':
                                 else:
                                     epoch -= 1
                                     iter = int((np.ceil(len(train_dataloader)/6000)-1)*6000)
+
+                            print('Nan ckpt detected, reset optimizer and reload ckpt ep=', epoch, ', iter=', iter)
                             cnn.load_state_dict(torch.load(config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt' % (epoch, iter)))
-                            continue
+                            optimizer = torch.optim.Adam(cnn.parameters(), lr=config['LEARNING_RATE'], betas=(0.9, 0.999))
 
                         evaluation_mode = 'evaluate' + config['OPERATION'][len('train'):] if 'mix_loss' in config['OPERATION'] else 'evaluate'
                         total_normal_errors = None
+
                         with torch.no_grad():
-                            print('<EVALUATION MODE:',evaluation_mode,'>')
+                            print('<EVALUATION MODE:', evaluation_mode, '>')
                             cnn.eval()
                             for _, eval_batch in enumerate(test_dataloader): # TODO: val_dataloader
                                 eval_batch = {data_key: eval_batch[data_key].cuda() for data_key in eval_batch}

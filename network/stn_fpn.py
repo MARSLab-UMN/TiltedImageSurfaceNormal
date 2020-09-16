@@ -6,10 +6,10 @@ import torchvision.models
 import collections
 import math
 from warping_2dof_alignment import Warping2DOFAlignment
-from network.fpn_architectures import PlainFPN
-from network.fpn_architectures import ASPP_FPN
-from network.fpn_architecture import ModifiedFPN
-from network.fpn_architecture import FPNWarpInputMultiDirections
+from network.fpn_architectures import PFPN
+from network.fpn_architectures import DFPN
+from network.fpn_architectures import MFPN
+from network.fpn_architectures import FPNWarpInputMultiDirections
 from network.dorn_architecture import DORNBN
 
 
@@ -53,22 +53,57 @@ class SpatialRectifier(nn.Module):
         return z
 
 
-class SpatialRectifierFPN(nn.Module):
-    def __init__(self, fc_img=np.array([0.5 * 577.87061, 0.5 * 580.25851]), canonical_view_cnn_ckpt=''):
-        super(SpatialRectifierFPN, self).__init__()
+class SpatialRectifierPFPN(nn.Module):
+    def __init__(self, fc_img=np.array([0.5 * 577.87061, 0.5 * 580.25851]), canonical_view_cnn_ckpt='', sr_cnn_ckpt=''):
+        super(SpatialRectifierPFPN, self).__init__()
         self.warp_params_cnn = SpatialRectifier()
-        # TODO: change to PlainFPN()?
-        # self.canonical_view_cnn = FPNWarpInputMultiDirections(in_channels=3, training_mode='train_robust_acos_loss',
-        #                                                       use_mask=False, fc_img=fc_img)
-        #
-        self.canonical_view_cnn = PlainFPN(backbone='resnet101')
+        self.canonical_view_cnn = PFPN(backbone='resnet101')
 
         fc = fc_img
         cc = np.array([160, 120])
         self.warp_2dof_alignment = Warping2DOFAlignment(fx=fc[0], fy=fc[1], cx=cc[0], cy=cc[1])
 
-        self.warp_params_cnn.load_state_dict(torch.load(
-            '/mars/mnt/oitstorage/tien_storage/FPN_warping/spatial_rectifier_2nd_trial/model-epoch-00016-iter-24000.ckpt'))
+        self.warp_params_cnn.load_state_dict(torch.load(sr_cnn_ckpt))
+        if canonical_view_cnn_ckpt != '':
+            self.canonical_view_cnn.load_state_dict(torch.load(canonical_view_cnn_ckpt))
+
+    def forward(self, x):
+        # Step 1: Construct warping parameters
+        v = self.warp_params_cnn(x)
+        I_g = torch.nn.functional.normalize(v[:, 0:3], dim=1, eps=1e-6)
+        I_a = torch.nn.functional.normalize(v[:, 3:6], dim=1, eps=1e-6)
+
+        # Step 2: Construct image sampler forward and inverse
+        R_inv, img_sampler, inv_img_sampler = self.warp_2dof_alignment.image_sampler_forward_inverse(I_g, I_a)
+
+        # Step 3: Warp input to be canonical
+        w_x = torch.nn.functional.grid_sample(x, img_sampler, padding_mode='zeros', mode='bilinear')
+
+        # Step 4: Canonical view
+        w_y = self.canonical_view_cnn(w_x)
+
+        # Step 5: Inverse warp the output to be pixel wise with input
+        y = torch.nn.functional.grid_sample(w_y, inv_img_sampler, padding_mode='zeros', mode='bilinear')
+        y = y.view(x.shape[0], x.shape[1], x.shape[2] * x.shape[3])
+        n_pred_c = (R_inv.bmm(y)).view(x.shape[0], x.shape[1], x.shape[2], x.shape[3])
+
+        # Step 7: Join the information between generalized and canonical??
+
+        return {'I_g': v[:, 0:3], 'I_a': v[:, 3:6], 'n': n_pred_c, 'W_I': w_x, 'W_O': w_y}
+
+
+class SpatialRectifierMFPN(nn.Module):
+    def __init__(self, fc_img=np.array([0.5 * 577.87061, 0.5 * 580.25851]), canonical_view_cnn_ckpt='', sr_cnn_ckpt=''):
+        super(SpatialRectifierMFPN, self).__init__()
+        self.warp_params_cnn = SpatialRectifier()
+        self.canonical_view_cnn = FPNWarpInputMultiDirections(in_channels=3, training_mode='train_robust_acos_loss',
+                                                              use_mask=False, fc_img=fc_img)
+
+        fc = fc_img
+        cc = np.array([160, 120])
+        self.warp_2dof_alignment = Warping2DOFAlignment(fx=fc[0], fy=fc[1], cx=cc[0], cy=cc[1])
+
+        self.warp_params_cnn.load_state_dict(torch.load(sr_cnn_ckpt))
         if canonical_view_cnn_ckpt != '':
             self.canonical_view_cnn.load_state_dict(torch.load(canonical_view_cnn_ckpt))
 
@@ -102,17 +137,16 @@ class SpatialRectifierFPN(nn.Module):
 
 
 class SpatialRectifierDFPN(nn.Module):
-    def __init__(self, fc_img=np.array([0.5 * 577.87061, 0.5 * 580.25851]), canonical_view_cnn_ckpt=''):
+    def __init__(self, fc_img=np.array([0.5 * 577.87061, 0.5 * 580.25851]), canonical_view_cnn_ckpt='', sr_cnn_ckpt=''):
         super(SpatialRectifierDFPN, self).__init__()
         self.warp_params_cnn = SpatialRectifier()
-        self.canonical_view_cnn = ASPP_FPN(backbone='resnext101')
+        self.canonical_view_cnn = DFPN(backbone='resnext101')
 
         fc = fc_img
         cc = np.array([160, 120])
         self.warp_2dof_alignment = Warping2DOFAlignment(fx=fc[0], fy=fc[1], cx=cc[0], cy=cc[1])
 
-        self.warp_params_cnn.load_state_dict(torch.load(
-            '/mars/mnt/oitstorage/tien_storage/FPN_warping/spatial_rectifier_2nd_trial/model-epoch-00016-iter-06000.ckpt'))
+        self.warp_params_cnn.load_state_dict(torch.load(sr_cnn_ckpt))
         if canonical_view_cnn_ckpt != '':
             self.canonical_view_cnn.load_state_dict(torch.load(canonical_view_cnn_ckpt))
         # '/mars/mnt/oitstorage/tien_storage/FPN_warping/dfpn_rectified_1st_trial/model-epoch-00019-iter-27000.ckpt'))
@@ -145,7 +179,7 @@ class SpatialRectifierDFPN(nn.Module):
 
 
 class SpatialRectifierDORN(nn.Module):
-    def __init__(self, fc_img=np.array([0.5 * 577.87061, 0.5 * 580.25851]), canonical_view_cnn_ckpt=''):
+    def __init__(self, fc_img=np.array([0.5 * 577.87061, 0.5 * 580.25851]), canonical_view_cnn_ckpt='', sr_cnn_ckpt=''):
         super(SpatialRectifierDORN, self).__init__()
         self.warp_params_cnn = SpatialRectifier()
         self.canonical_view_cnn = DORNBN(output_channel=3)
@@ -154,8 +188,7 @@ class SpatialRectifierDORN(nn.Module):
         cc = np.array([160, 120])
         self.warp_2dof_alignment = Warping2DOFAlignment(fx=fc[0], fy=fc[1], cx=cc[0], cy=cc[1])
 
-        self.warp_params_cnn.load_state_dict(torch.load(
-            '/mars/mnt/oitstorage/tien_storage/FPN_warping/spatial_rectifier_2nd_trial/model-epoch-00016-iter-06000.ckpt'))
+        self.warp_params_cnn.load_state_dict(torch.load(sr_cnn_ckpt))
 
         if canonical_view_cnn_ckpt != '':
             self.canonical_view_cnn.load_state_dict(torch.load(canonical_view_cnn_ckpt))
