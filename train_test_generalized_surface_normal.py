@@ -3,7 +3,7 @@ import numpy as np
 import skimage.io as sio
 import argparse
 from torch.utils.data import DataLoader
-from network import dorn_architecture, fpn_architectures, stn_fpn
+from network import dorn_architecture, fpn_architecture, stn_fpn
 from dataset_loader.dataset_loader_scannet import ScannetDataset
 from dataset_loader.dataset_loader_scannet import Scannet2DOFAlignmentDataset
 from dataset_loader.dataset_loader_nyud import NYUD_Dataset
@@ -23,8 +23,8 @@ def parsing_configurations():
     parser.add_argument('--sr_checkpoint_path', type=str,
                         default='/mars/mnt/oitstorage/tien_storage/FPN_warping/spatial_rectifier_2nd_trial/model-epoch-00016-iter-24000.ckpt')
     parser.add_argument('--learning_rate', type=float, default=1e-3)
-    parser.add_argument('--train_dataset', type=str, default='./data/framenet_train_test_split.pkl')
-    parser.add_argument('--test_dataset', type=str, default='./data/framenet_train_test_split.pkl')
+    parser.add_argument('--train_dataset', type=str, default='./data/scannet_standard_train_test_val_split.pkl')
+    parser.add_argument('--test_dataset', type=str, default='./data/scannet_standard_train_test_val_split.pkl')
     parser.add_argument('--net_architecture', type=str, default='dorn')
     parser.add_argument('--optimizer', type=str, default='adam')
     parser.add_argument('--augmentation', type=str, default='')
@@ -300,11 +300,9 @@ def create_network(config):
     elif config['ARCHITECTURE'] == 'dorn_batchnorm':
         cnn = dorn_architecture.DORNBN(output_channel=3, training_mode=config['OPERATION'])
     elif config['ARCHITECTURE'] == 'pfpn':
-        cnn = fpn_architectures.PFPN(in_channels=3, training_mode=config['OPERATION'], backbone='resnet101')
-    elif config['ARCHITECTURE'] == 'mfpn':
-        cnn = fpn_architectures.MFPN(in_channels=3, training_mode=config['OPERATION'])
+        cnn = fpn_architecture.PFPN(in_channels=3, training_mode=config['OPERATION'], backbone='resnet101')
     elif config['ARCHITECTURE'] == 'dfpn':
-        cnn = fpn_architectures.DFPN(backbone='resnext101')
+        cnn = fpn_architecture.DFPN(backbone='resnext101')
     elif config['ARCHITECTURE'] == 'spatial_rectifier':
         cnn = stn_fpn.SpatialRectifier()
     elif config['ARCHITECTURE'] == 'sr_pfpn':
@@ -312,11 +310,6 @@ def create_network(config):
             cnn = stn_fpn.SpatialRectifierPFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
         else:
             cnn = stn_fpn.SpatialRectifierPFPN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
-    elif config['ARCHITECTURE'] == 'sr_mfpn':
-        if 'kinect_azure' in config['TEST_DATASET']:
-            cnn = stn_fpn.SpatialRectifierMFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
-        else:
-            cnn = stn_fpn.SpatialRectifierMFPN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
     elif config['ARCHITECTURE'] == 'sr_dfpn':
         if 'kinect_azure' in config['TEST_DATASET']:
             cnn = stn_fpn.SpatialRectifierDFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
@@ -343,7 +336,6 @@ def forward_cnn(sample_batched, cnn, config):
 
     elif config['ARCHITECTURE'] == 'sr_dfpn' or \
             config['ARCHITECTURE'] == 'sr_pfpn' or \
-            config['ARCHITECTURE'] == 'sr_mfpn' or \
             config['ARCHITECTURE'] == 'sr_dorn':
         output_prediction = cnn(sample_batched['image'])
         if config['OPERATION'] == 'evaluate':
@@ -479,6 +471,7 @@ if __name__ == '__main__':
 
     # Step 6. Learning loop
     if 'train' in config['OPERATION']:
+        last_ckpt = {'epoch': None, 'iter': None}
         for epoch in range(0, 20):
             for iter, sample_batched in enumerate(train_dataloader):
                 cnn.train()
