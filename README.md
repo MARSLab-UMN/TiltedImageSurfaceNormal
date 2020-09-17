@@ -81,7 +81,7 @@ between the packages used in the code (at the time of submission).
 
 Inside the docker, change the working directory to this repository: 
 ```
-cd /home/PATH/TO/THIS/REPO/eccv2020-1886-release
+cd /home/PATH/TO/THIS/REPO/TiltedImageSurfaceNormal
 ```
 
 # Datasets and pretrained models
@@ -119,22 +119,26 @@ wget -nv -O checkpoints.zip https://tilted-image-normal.s3.amazonaws.com/checkpo
 # Quick Inference
 
 Please follow the below steps to extract surface normals from some RGB images using our provided pre-trained model:
-1. Make sure you have the following `.ckpt` file inside [`./checkpoints/`](./checkpoints) folder: 
-`DFPN_TAL_SR.ckpt`.
-You can also use this command to download ONLY this checkpoint:
 
-```
-wget -nv -O DFPN_TAL_SR.ckpt https://tilted-image-normal.s3.amazonaws.com/DFPN_TAL_SR.ckpt
-```
+1) Make sure you have the following `.ckpt` files inside [`./checkpoints/`](./checkpoints) folder: 
+`DFPN_TAL_SR.ckpt`, `SR_only.ckpt`.
+You can also use this command to download ONLY these checkpoints:
 
-2. Download our demo RGB images:
+    ```
+    wget -nv -O DFPN_TAL_SR.ckpt https://tilted-image-normal.s3.amazonaws.com/DFPN_TAL_SR.ckpt && mv DFPN_TAL_SR.ckpt ./checkpoints/
+    
+    wget -nv -O SR_only.ckpt https://tilted-image-normal.s3.amazonaws.com/SR_only.ckpt && mv SR_only.ckpt ./checkpoints/
+    ```
+2) Download our demo RGB images:
 
-```
-wget -nv -O demo_dataset.zip https://tilted-image-normal.s3.amazonaws.com/demo_dataset.zip && unzip -q demo_dataset.zip && rm -rf demo_dataset.zip
-```
+    ```
+    wget -nv -O demo_dataset.zip https://tilted-image-normal.s3.amazonaws.com/demo_dataset.zip && unzip -q demo_dataset.zip && rm -rf demo_dataset.zip
+    ```
+3) Run [`inference_script.sh`](./inference_script.sh) to extract the results in [`./demo_results/`](./demo_results).
 
-3. Run [`inference_script.sh`](./inference_script.sh) to extract the results in [`./demo_results/`](./demo_results).
-
+    ```
+    sh inference_script.sh
+    ```
 
 # Benchmark Evaluation
 We evaluate surface normal estimation on ScanNet, NYUD-v2, or Tilt-RGBD with different network architectures using our provided pre-trained models.
@@ -144,13 +148,13 @@ Run:
 sh test_script.sh
 ```
 
-
 Specifically, inside the bash script, multiple arguments are needed, including the path to the pre-trained model, batch size, network architecture, and test dataset (ScanNet/NYUv2/Tilt-RGBD).
 Please refer to the actual code for the exact supported arguments options.
 
 **(Note: make sure you specify the correct network architecture for your pretrained model)**
 
 ```
+####### SAMPLE CODE BLOCK
 # Evaluation for DFPN+TAL
 ## Tilted Images on Tilt-RGBD
 python train_test_generalized_surface_normal.py \
