@@ -1,16 +1,16 @@
 # Surface Normal Estimation of Tilted Images via Spatial Rectifier
 
+This repository contains the source code for our paper:
+
+**Surface Normal Estimation of Tilted Images via Spatial Rectifier**  
+Tien Do, Khiem Vuong, Stergios I. Roumeliotis, and Hyun Soo Park  
+European Conference on Computer Vision (ECCV), 2020 (*Spotlight*)  
+[Homepage](https://www.khiemvuong.com/TiltedImageSurfaceNormal/) | [Arxiv](https://arxiv.org/pdf/2007.09264.pdf)
+
 # Abstract
 
-We present a spatial rectifier to estimate surface normal of tilted images. 
-Tilted images are of particular interest as more visual data are captured by embodied sensors such as body-/robot-mounted cameras. Existing approaches exhibit bounded performance on predicting surface normal because they were trained by gravity-aligned images. 
-Our two main hypotheses are: (1) visual scene layout is indicative of the gravity direction; and 
-(2) not all surfaces are equally represented, i.e., there exists a transformation of the tilted image to produce better surface normal prediction. 
-We design the spatial rectifier that is learned to transform the surface normal distribution of the tilted image such that it matches to that of gravity aligned images. 
-The spatial rectifier is parametrized by a principle direction of the rectified image that maximizes the distribution match. 
-When training, we jointly learn the gravity and principle direction that can synthesize images and surface normal to supervise the surface normal estimator. 
-Inspired by the panoptic feature pyramid network, a new network that can access to both global and local visual features is proposed by leveraging dilated convolution in the decoder. The resulting estimator produces accurate surface normal estimation, outperforming state-of-the-art methods and data augmentation baseline. 
-We evaluate our method not only on ScanNet and NYUv2 but also on a new dataset called Tilt-RGBD that includes substantial roll and pitch camera motion captured by body-mounted cameras.
+In this paper, we present a spatial rectifier to estimate surface normals of tilted images. Tilted images are of particular interest as more visual data are captured by arbitrarily oriented sensors such as body-/robot-mounted cameras. Existing approaches exhibit bounded performance on predicting surface normals because they were trained using gravity-aligned images. Our two main hypotheses are: (1) visual scene layout is indicative of the gravity direction; and (2) not all surfaces are equally represented by a learned estimator due to the structured distribution of the training data, thus, there exists a transformation for each tilted image that is more responsive to the learned estimator than others. We design a spatial rectifier that is learned to transform the surface normal distribution of a tilted image to the rectified one that matches the gravity-aligned training data distribution. Along with the spatial rectifier, we propose a novel truncated angular loss that offers a stronger gradient at smaller angular errors and robustness to outliers. The resulting estimator outperforms the state-of-the-art methods including data augmentation baselines not only on ScanNet and NYUv2 but also on a new dataset called Tilt-RGBD that includes considerable roll and pitch camera motion.
+
 
 # Installation Guide
 For convenience, all the code in this repositority are assumed to be run inside NVIDIA-Docker. 
@@ -183,7 +183,19 @@ Specifically, inside the bash script, multiple arguments are needed, including t
 type of loss functions (L2, AL, or TAL), learning rate, batch size, network architecture, training/testing/validation datasets (ScanNet/NYUv2/Tilt-RGBD). 
 Please refer to the actual code for the exact supported arguments options.
 
-
+# Citation
+If you find our work to be useful in your research, please consider citing our paper:
+```
+@InProceedings{Do2020SurfaceNormal,
+author = {Do, Tien and Vuong, Khiem and Roumeliotis, Stergios I. and Park, Hyun Soo},
+title = {Surface Normal Estimation of Tilted Images
+via Spatial Rectifier},
+booktitle = {Proc. of the European Conference on Computer Vision},
+month = {August} # { 23--28},
+address={Virtual Conference},
+year = {2020}
+}
+```
 
 
 
