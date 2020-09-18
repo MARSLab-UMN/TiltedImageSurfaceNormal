@@ -1,6 +1,5 @@
 import torch
 import numpy as np
-import skimage.io as sio
 import argparse
 from torch.utils.data import DataLoader
 from network import dorn_architecture, fpn_architecture, spatial_rectifier_networks
@@ -9,7 +8,6 @@ from dataset_loader.dataset_loader_scannet import Scannet2DOFAlignmentDataset
 from dataset_loader.dataset_loader_nyud import NYUD_Dataset
 from dataset_loader.dataset_loader_kinectazure import KinectAzureDataset
 import os
-import cv2
 from warping_2dof_alignment import Warping2DOFAlignment
 
 
