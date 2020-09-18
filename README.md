@@ -143,6 +143,10 @@ You can also use this command to download ONLY these checkpoints:
 
 # Benchmark Evaluation
 
+Since the time this paper was published, we've been making some progress towards further improving the results. 
+Thus, here we provide the updated evaluation results.
+
+![updated evaluation results](../media/evaluation_09_18_20.png?raw=true)
 
 We evaluate surface normal estimation on ScanNet, NYUD-v2, or Tilt-RGBD with different network architectures using our provided pre-trained models.
 
