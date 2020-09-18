@@ -3,7 +3,7 @@
 python train_test_generalized_surface_normal.py \
                      --checkpoint_path './checkpoints/DFPN_TAL.ckpt' \
                      --operation 'evaluate' \
-                     --test_dataset 'kinect_azure_biased_viewing_directions' \
+                     --test_dataset 'kinect_azure_gravity_align' \
                      --net_architecture 'dfpn' \
                      --batch_size 128
 
@@ -11,7 +11,7 @@ python train_test_generalized_surface_normal.py \
 python train_test_generalized_surface_normal.py \
                      --checkpoint_path './checkpoints/DFPN_TAL.ckpt' \
                      --operation 'evaluate' \
-                     --test_dataset 'kinect_azure_unseen_viewing_directions' \
+                     --test_dataset 'kinect_azure_tilted' \
                      --net_architecture 'dfpn' \
                      --batch_size 128
 
@@ -39,7 +39,7 @@ python train_test_generalized_surface_normal.py \
                      --checkpoint_path './checkpoints/DFPN_TAL_SR.ckpt' \
                      --sr_checkpoint_path './checkpoints/SR_only.ckpt' \
                      --operation 'evaluate' \
-                     --test_dataset 'kinect_azure_biased_viewing_directions' \
+                     --test_dataset 'kinect_azure_gravity_align' \
                      --net_architecture 'sr_dfpn' \
                      --batch_size 128
 
@@ -48,6 +48,6 @@ python train_test_generalized_surface_normal.py \
                      --checkpoint_path './checkpoints/DFPN_TAL_SR.ckpt' \
                      --sr_checkpoint_path './checkpoints/SR_only.ckpt' \
                      --operation 'evaluate' \
-                     --test_dataset 'kinect_azure_unseen_viewing_directions' \
+                     --test_dataset 'kinect_azure_tilted' \
                      --net_architecture 'sr_dfpn' \
                      --batch_size 128

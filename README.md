@@ -89,7 +89,8 @@ cd /home/PATH/TO/THIS/REPO/TiltedImageSurfaceNormal
 ### Datasets
 
 We only provide NYUv2 and Tilt-RGBD datasets for evaluation purpose. For more details on downloading ScanNet dataset which contains ground-truth surface normal computed by FrameNet, 
-please refer to [FrameNet's repo](https://github.com/hjwdzh/FrameNet/tree/master/src).
+please refer to [FrameNet's repo](https://github.com/hjwdzh/FrameNet/tree/master/src). **Make sure 
+the dataset is inside [`./datasets/`](./datasets) folder; otherwise, please change the dataset loader's root to where your dataset is located.**
 
 Please run the following commands to automatically download our provided datasets:
 
@@ -141,6 +142,8 @@ You can also use this command to download ONLY these checkpoints:
     ```
 
 # Benchmark Evaluation
+
+
 We evaluate surface normal estimation on ScanNet, NYUD-v2, or Tilt-RGBD with different network architectures using our provided pre-trained models.
 
 Run:
@@ -167,20 +170,16 @@ python train_test_generalized_surface_normal.py \
 
 # Training
 
-We train our surface normal estimation network on ScanNet dataset. 
+At this point, we only provide the code for training our surface normal estimation network on ScanNet dataset. 
+We will update the code for training the full *Spatial Rectifier* network pipeline in the future.
 
-Note that the train/test splits used for training the full spatial rectifier pipeline is not standard as we 
-intentionally chose some specific parts of ScanNet in order to help the training.
-
-As specified in [`train_script.sh`](./train_script.sh), the training pipeline consists of two stages: 
-
-1) Continue training the canonical-view surface normal estimation network by warping the input images towards the precomputed principle direction. 
-
-2) Using the above canonical-view surface normal estimation network and the pretrained spatial rectifier, start training the full pipeline end-to-end.
-
+Run:
+```
+sh train_script.sh
+```
 
 Specifically, inside the bash script, multiple arguments are needed, including the folder containing log files and checkpoints,
-type of loss functions (L2, AL, or TAL), learning rate, batch size, network architecture, training/testing/validation datasets (ScanNet/NYUv2/Tilt-RGBD). 
+type of loss functions (L2, AL, or TAL), learning rate, batch size, network architecture, training/testing/validation datasets. 
 Please refer to the actual code for the exact supported arguments options.
 
 # Citation

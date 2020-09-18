@@ -3,7 +3,7 @@ import numpy as np
 import skimage.io as sio
 import argparse
 from torch.utils.data import DataLoader
-from network import dorn_architecture, fpn_architecture, stn_fpn
+from network import dorn_architecture, fpn_architecture, spatial_rectifier_networks
 from dataset_loader.dataset_loader_custom import CustomDataset
 import os
 import time
@@ -73,13 +73,13 @@ def create_network(config):
     elif config['ARCHITECTURE'] == 'dfpn':
         cnn = fpn_architecture.DFPN(backbone='resnext101')
     elif config['ARCHITECTURE'] == 'spatial_rectifier':
-        cnn = stn_fpn.SpatialRectifier()
+        cnn = spatial_rectifier_networks.SpatialRectifier()
     elif config['ARCHITECTURE'] == 'sr_pfpn':
-        cnn = stn_fpn.SpatialRectifierPFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
+        cnn = spatial_rectifier_networks.SpatialRectifierPFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
     elif config['ARCHITECTURE'] == 'sr_dfpn':
-        cnn = stn_fpn.SpatialRectifierDFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
+        cnn = spatial_rectifier_networks.SpatialRectifierDFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
     elif config['ARCHITECTURE'] == 'sr_dorn':
-        cnn = stn_fpn.SpatialRectifierDORN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
+        cnn = spatial_rectifier_networks.SpatialRectifierDORN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
 
     cnn = cnn.cuda()
 

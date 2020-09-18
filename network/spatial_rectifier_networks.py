@@ -85,8 +85,6 @@ class SpatialRectifierPFPN(nn.Module):
         y = y.view(x.shape[0], x.shape[1], x.shape[2] * x.shape[3])
         n_pred_c = (R_inv.bmm(y)).view(x.shape[0], x.shape[1], x.shape[2], x.shape[3])
 
-        # Step 7: Join the information between generalized and canonical??
-
         return {'I_g': v[:, 0:3], 'I_a': v[:, 3:6], 'n': n_pred_c, 'W_I': w_x, 'W_O': w_y}
 
 

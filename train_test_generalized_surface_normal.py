@@ -3,7 +3,7 @@ import numpy as np
 import skimage.io as sio
 import argparse
 from torch.utils.data import DataLoader
-from network import dorn_architecture, fpn_architecture, stn_fpn
+from network import dorn_architecture, fpn_architecture, spatial_rectifier_networks
 from dataset_loader.dataset_loader_scannet import ScannetDataset
 from dataset_loader.dataset_loader_scannet import Scannet2DOFAlignmentDataset
 from dataset_loader.dataset_loader_nyud import NYUD_Dataset
@@ -62,12 +62,6 @@ def check_nan_ckpt(cnn):
     return is_nan_flag
 
 
-def Normalize(dir_x):
-    dir_x_l = torch.sqrt(torch.sum(dir_x ** 2,dim=1) + 1e-6).view(dir_x.shape[0],1,dir_x.shape[2],dir_x.shape[3])
-    dir_x_l = torch.cat([dir_x_l, dir_x_l, dir_x_l], dim=1)
-    return dir_x / dir_x_l
-
-
 def compute_surface_normal_angle_error(sample_batched, output_pred, mode='evaluate', angle_type='delta'):
     if 'Z' in sample_batched:
         surface_normal_pred = output_pred
@@ -81,13 +75,6 @@ def compute_surface_normal_angle_error(sample_batched, output_pred, mode='evalua
             mask = sample_batched['mask'] > 0
             mask = mask.detach()
             return -torch.sum(prediction_error[mask]), 1.0-torch.mean(prediction_error[mask])
-
-        elif mode == 'train_L2_explicit_normalize':
-            surface_normal_pred = Normalize(surface_normal_pred)
-            surface_normal_gt = Normalize(sample_batched['Z'])
-            prediction_error = torch.sum((surface_normal_pred - surface_normal_gt) ** 2, dim=1)
-            mask = sample_batched['mask'] > 0
-            return torch.sum(prediction_error[mask]), 0.5*torch.mean(prediction_error[mask])
 
         elif mode == 'train_AL_loss':
             mask = sample_batched['mask'] > 0
@@ -222,10 +209,10 @@ def create_dataset_loader(config):
 
         if config['TEST_DATASET'] == 'kinect_azure_full':
             test_dataset = KinectAzureDataset(usage='test_full')
-        elif config['TEST_DATASET'] == 'kinect_azure_biased_viewing_directions':
-            test_dataset = KinectAzureDataset(usage='test_biased_viewing_directions')
-        elif config['TEST_DATASET'] == 'kinect_azure_unseen_viewing_directions':
-            test_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
+        elif config['TEST_DATASET'] == 'kinect_azure_gravity_align':
+            test_dataset = KinectAzureDataset(usage='test_gravity_align')
+        elif config['TEST_DATASET'] == 'kinect_azure_tilted':
+            test_dataset = KinectAzureDataset(usage='test_tilted')
 
         test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
                                      shuffle=False, num_workers=16)
@@ -241,38 +228,14 @@ def create_dataset_loader(config):
         train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
                                       shuffle=True, num_workers=16, pin_memory=True)
 
-        if config['TEST_DATASET'] == 'scannet_2dof_alignment':
-            test_dataset = Scannet2DOFAlignmentDataset(usage='test')
-            test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-                                          shuffle=False, num_workers=16)
-        else:
-            test_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
-            test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-                                         shuffle=False, num_workers=16)
+        test_dataset = Scannet2DOFAlignmentDataset(usage='test')
+        test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
+                                      shuffle=False, num_workers=16)
 
-        val_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
+        val_dataset = KinectAzureDataset(usage='test_tilted')
         val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
                                     shuffle=False, num_workers=16)
         return train_dataloader, test_dataloader, val_dataloader
-
-    # TODO: remove?
-    # if config['AUGMENTATION'] == 'random_warp_input':
-    #     train_dataset = ScannetDataset(usage='train', train_test_split=config['TRAIN_DATASET'])
-    #     train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
-    #                                     shuffle=True, num_workers=16, pin_memory=True)
-    #
-    #     test_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
-    #     test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-    #                                  shuffle=False, num_workers=16)
-    #
-    #     # test_dataset = Scannet2DOFAlignmentDataset(usage='test')
-    #     # test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-    #     #                              shuffle=False, num_workers=16)
-    #
-    #     val_dataset = KinectAzureDataset(usage='test_unseen_viewing_directions')
-    #     val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
-    #                                 shuffle=False, num_workers=4)
-    #     return train_dataloader, test_dataloader, val_dataloader
 
     # Standard train/test split on ScanNet
     if config['TEST_DATASET'] == 'scannet_standard':
@@ -305,22 +268,22 @@ def create_network(config):
     elif config['ARCHITECTURE'] == 'dfpn':
         cnn = fpn_architecture.DFPN(backbone='resnext101')
     elif config['ARCHITECTURE'] == 'spatial_rectifier':
-        cnn = stn_fpn.SpatialRectifier()
+        cnn = spatial_rectifier_networks.SpatialRectifier()
     elif config['ARCHITECTURE'] == 'sr_pfpn':
         if 'kinect_azure' in config['TEST_DATASET']:
-            cnn = stn_fpn.SpatialRectifierPFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
+            cnn = spatial_rectifier_networks.SpatialRectifierPFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
         else:
-            cnn = stn_fpn.SpatialRectifierPFPN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
+            cnn = spatial_rectifier_networks.SpatialRectifierPFPN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
     elif config['ARCHITECTURE'] == 'sr_dfpn':
         if 'kinect_azure' in config['TEST_DATASET']:
-            cnn = stn_fpn.SpatialRectifierDFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
+            cnn = spatial_rectifier_networks.SpatialRectifierDFPN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
         else:
-            cnn = stn_fpn.SpatialRectifierDFPN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
+            cnn = spatial_rectifier_networks.SpatialRectifierDFPN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
     elif config['ARCHITECTURE'] == 'sr_dorn':
         if 'kinect_azure' in config['TEST_DATASET']:
-            cnn = stn_fpn.SpatialRectifierDORN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
+            cnn = spatial_rectifier_networks.SpatialRectifierDORN(sr_cnn_ckpt=config['SR_CKPT_PATH'])
         else:
-            cnn = stn_fpn.SpatialRectifierDORN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
+            cnn = spatial_rectifier_networks.SpatialRectifierDORN(canonical_view_cnn_ckpt=config['RECTIFIED_CKPT_PATH'], sr_cnn_ckpt=config['SR_CKPT_PATH'])
 
     cnn = cnn.cuda()
 
@@ -351,56 +314,7 @@ def forward_cnn(sample_batched, cnn, config):
 
 
 def modify_inputs(sample_batched, config, warper, epoch, iter):
-    if config['AUGMENTATION'] == 'crop_input':
-        num_img_in_batch = sample_batched['mask'].shape[0]
-        theta = (np.random.ranf(num_img_in_batch) - 0.5)* np.pi / 4.0
-        phi = (np.random.ranf(num_img_in_batch) - 0.5) * np.pi / 2.5
-        gravity_dir = np.vstack((-np.cos(theta)*np.sin(phi),
-                                 np.cos(theta)*np.cos(phi),
-                                 np.sin(theta)))
-        gravity_dir = torch.tensor(gravity_dir.transpose(), dtype=torch.float).view(num_img_in_batch, 3)
-        gravity_dir = gravity_dir.cuda()
-        Y_dir = torch.tensor([0.0, 1.0, 0.0]).cuda()
-
-        for i in range(0, num_img_in_batch):
-            if np.random.ranf() < 0.5: # random warp 2/3 images
-                gravity_dir[i, :] = Y_dir
-
-        alignment_dir = Y_dir.repeat(num_img_in_batch, 1)
-        new_sample_batched = warper.warp_all_with_gravity_center_aligned(sample_batched,
-                                                                         I_g=gravity_dir,
-                                                                         I_a=alignment_dir)
-        sample_batched['mask'] = new_sample_batched['mask']
-        sample_batched['image'] = sample_batched['image'] * new_sample_batched['visible_mask'].\
-                                                                view(sample_batched['image'].shape[0],
-                                                                     1,
-                                                                     sample_batched['image'].shape[2],
-                                                                     sample_batched['image'].shape[3])
-    elif config['AUGMENTATION'] == 'scale_crop_input':
-        num_img_in_batch = sample_batched['mask'].shape[0]
-        theta = (np.random.ranf(num_img_in_batch) - 0.5)* np.pi / 3.0
-        phi = (np.random.ranf(num_img_in_batch) - 0.5) * np.pi / 3.0
-        gravity_dir = np.vstack((np.sin(theta)*np.cos(phi),
-                                 np.cos(theta),
-                                 np.sin(theta)*np.sin(phi)))
-        gravity_dir = torch.tensor(gravity_dir.transpose(), dtype=torch.float).view(num_img_in_batch, 3)
-        gravity_dir = gravity_dir.cuda()
-        canonical_mask = torch.ones(1, 3, 240, 320).cuda()
-        for i in range(0, num_img_in_batch):
-            if np.random.ranf() > 0.3: # random warp 2/3 images
-                _, warp_mask = warper.warp_with_gravity(canonical_mask, gravity_dir[i, :].view(1, 3))
-                warp_mask = warp_mask > 0
-                warp_mask = warp_mask.float()
-                sample_batched['mask'][i:i+1, :, :] = sample_batched['mask'][i:i+1, :, :] * warp_mask[:, 0]
-                sample_batched['image'][i:i+1, :, :, :] = sample_batched['image'][i:i+1, :, :, :] * warp_mask
-            scale_factor = np.random.ranf()
-            if scale_factor > 0.5:
-                scale_factor *= 1.5
-                sample_batched['mask'][i:i + 1, :, :] = warper.scale_features(sample_batched['mask'][i:i + 1, :, :], scale_factor)
-                sample_batched['image'][i:i + 1, :, :, :] = warper.scale_features(sample_batched['image'][i:i + 1, :, :, :], scale_factor)
-                sample_batched['Z'][i:i + 1, :, :, :] = warper.scale_features(sample_batched['Z'][i:i + 1, :, :, :], scale_factor)
-
-    elif config['AUGMENTATION'] == 'warp_input':
+    if config['AUGMENTATION'] == 'warp_input':
         gravity_dir = sample_batched['gravity']
         gravity_dir = gravity_dir.cuda()
         alignment_dir = sample_batched['aligned_directions']
@@ -409,7 +323,6 @@ def modify_inputs(sample_batched, config, warper, epoch, iter):
                                                                      I_g=gravity_dir,
                                                                      I_a=alignment_dir)
     elif config['AUGMENTATION'] == 'random_warp_input':
-        # global _saving_indices
         num_img_in_batch = sample_batched['mask'].shape[0]
         theta = (np.random.ranf(num_img_in_batch) - 0.5) * np.pi / 4.0 # pitch augmentation
         phi = (np.random.ranf(num_img_in_batch) - 0.5) * np.pi / 1.2 # roll augmentation
@@ -432,9 +345,6 @@ def modify_inputs(sample_batched, config, warper, epoch, iter):
 
 
 if __name__ == '__main__':
-    # Step 0. Debugging global parameters
-    # _saving_indices = 0
-
     # Step 1. Configuration file
     config = parsing_configurations()
 
@@ -472,7 +382,14 @@ if __name__ == '__main__':
 
     # Step 6. Learning loop
     if 'train' in config['OPERATION']:
+        # Store a pointer to the last checkpoint
         last_ckpt = {'epoch': None, 'iter': None}
+
+        # Log info parameters
+        print_every_x_iterations = 60
+        evaluate_every_x_iterations = 600
+        save_ckpt_every_x_iterations = 6000
+
         for epoch in range(0, 20):
             for iter, sample_batched in enumerate(train_dataloader):
                 cnn.train()
@@ -498,83 +415,45 @@ if __name__ == '__main__':
                 optimizer.step()
 
                 # Step 6e. Print loss value
-                if iter % 60 == 0:
+                if iter % print_every_x_iterations == 0:
                     log('Epoch %d, Iter %d, Loss %.4f' % (epoch, iter, logging_losses), training_loss_file)
 
                 # Step 6f. Print robust evaluation stats
-                # Step 6f. Print robust evaluation stats
-                if epoch == 0:
-                    if iter % 600 == 0 and iter > 0:
-                        if check_nan_ckpt(cnn):
-                            if iter < 6000:
-                                exit()
+                if iter % evaluate_every_x_iterations == 0:
+                    # Reload closest checkpoint if hit nan
+                    if check_nan_ckpt(cnn):
+                        cnn.load_state_dict(torch.load(config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt'
+                                                       % (last_ckpt['epoch'], last_ckpt['iter'])))
+                        optimizer.load_state_dict(
+                            torch.load(config['LOG_FOLDER'] + '/optimizer-epoch-%05d-iter-%05d.ckpt'
+                                       % (last_ckpt['epoch'], last_ckpt['iter'])))
+                        log('Getting Nan, reloading model from ep: %d, iter: %d'
+                            % (last_ckpt['epoch'], last_ckpt['iter']), training_loss_file)
 
-                            cnn.load_state_dict(torch.load(config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt'
-                                                           % (last_ckpt['epoch'], last_ckpt['iter'])))
-                            optimizer.load_state_dict(
-                                torch.load(config['LOG_FOLDER'] + '/optimizer-epoch-%05d-iter-%05d.ckpt'
-                                           % (last_ckpt['epoch'], last_ckpt['iter'])))
-                            log('Getting Nan, reloading model from ep: %d, iter: %d'
-                                % (last_ckpt['epoch'], last_ckpt['iter']), training_loss_file)
+                    evaluation_mode = 'evaluate' + config['OPERATION'][len('train'):] if 'mix_loss' in config['OPERATION'] else 'evaluate'
+                    total_normal_errors = None
 
-                        evaluation_mode = 'evaluate' + config['OPERATION'][len('train'):] if 'mix_loss' in config['OPERATION'] else 'evaluate'
-                        total_normal_errors = None
-                        with torch.no_grad():
-                            print('<EVALUATION MODE:', evaluation_mode, '>')
-                            cnn.eval()
-                            for _, eval_batch in enumerate(test_dataloader): # TODO: val_dataloader
-                                eval_batch = {data_key: eval_batch[data_key].cuda() for data_key in eval_batch}
-                                if config['AUGMENTATION'] == 'warp_input':
-                                    eval_batch = modify_inputs(eval_batch, config, warper, epoch, iter)
-
-                                output_prediction = forward_cnn(eval_batch, cnn, config)
-
-                                if 'sr' in config['ARCHITECTURE']:
-                                    surfacenormal_pred = output_prediction['n']
-                                else:
-                                    surfacenormal_pred = output_prediction
-                                angle_error_prediction = compute_surface_normal_angle_error(eval_batch,
-                                                                                            surfacenormal_pred,
-                                                                                            mode=evaluation_mode,
-                                                                                            angle_type='delta')
-                                accumulate_prediction_error(eval_batch, angle_error_prediction)
-                            log_normal_stats(epoch, iter, total_normal_errors, evaluate_stat_file)
-                else:
-                    if iter % 600 == 0:
-                        # Reload closest checkpoint if hit nan
-                        if check_nan_ckpt(cnn):
-                            cnn.load_state_dict(torch.load(config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt'
-                                                           % (last_ckpt['epoch'], last_ckpt['iter'])))
-                            optimizer.load_state_dict(
-                                torch.load(config['LOG_FOLDER'] + '/optimizer-epoch-%05d-iter-%05d.ckpt'
-                                           % (last_ckpt['epoch'], last_ckpt['iter'])))
-                            log('Getting Nan, reloading model from ep: %d, iter: %d'
-                                % (last_ckpt['epoch'], last_ckpt['iter']), training_loss_file)
-
-                        evaluation_mode = 'evaluate' + config['OPERATION'][len('train'):] if 'mix_loss' in config['OPERATION'] else 'evaluate'
-                        total_normal_errors = None
-
-                        with torch.no_grad():
-                            print('<EVALUATION MODE:', evaluation_mode, '>')
-                            cnn.eval()
-                            for _, eval_batch in enumerate(test_dataloader): # TODO: val_dataloader
-                                eval_batch = {data_key: eval_batch[data_key].cuda() for data_key in eval_batch}
-                                if config['AUGMENTATION'] == 'warp_input':
-                                    eval_batch = modify_inputs(eval_batch, config, warper, epoch, iter)
-                                output_prediction = forward_cnn(eval_batch, cnn, config)
-                                if 'sr' in config['ARCHITECTURE']:
-                                    surfacenormal_pred = output_prediction['n']
-                                else:
-                                    surfacenormal_pred = output_prediction
-                                angle_error_prediction = compute_surface_normal_angle_error(eval_batch,
-                                                                                            surfacenormal_pred,
-                                                                                            mode=evaluation_mode,
-                                                                                            angle_type='delta')
-                                accumulate_prediction_error(eval_batch, angle_error_prediction)
-                            log_normal_stats(epoch, iter, total_normal_errors, evaluate_stat_file)
+                    with torch.no_grad():
+                        print('<EVALUATION MODE:', evaluation_mode, '>')
+                        cnn.eval()
+                        for _, eval_batch in enumerate(test_dataloader): # TODO: val_dataloader
+                            eval_batch = {data_key: eval_batch[data_key].cuda() for data_key in eval_batch}
+                            if config['AUGMENTATION'] == 'warp_input':
+                                eval_batch = modify_inputs(eval_batch, config, warper, epoch, iter)
+                            output_prediction = forward_cnn(eval_batch, cnn, config)
+                            if 'sr' in config['ARCHITECTURE']:
+                                surfacenormal_pred = output_prediction['n']
+                            else:
+                                surfacenormal_pred = output_prediction
+                            angle_error_prediction = compute_surface_normal_angle_error(eval_batch,
+                                                                                        surfacenormal_pred,
+                                                                                        mode=evaluation_mode,
+                                                                                        angle_type='delta')
+                            accumulate_prediction_error(eval_batch, angle_error_prediction)
+                        log_normal_stats(epoch, iter, total_normal_errors, evaluate_stat_file)
 
                 # Step 6g. Save checkpoints into file
-                if iter % 6000 == 0:
+                if iter % save_ckpt_every_x_iterations == 0:
                     path = config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt' % (epoch, iter)
                     torch.save(cnn.state_dict(), path)
                     path = config['LOG_FOLDER'] + '/optimizer-epoch-%05d-iter-%05d.ckpt' % (epoch, iter)
