@@ -6,6 +6,7 @@ import pickle
 import numpy as np
 import cv2
 
+
 class ScannetDataset(Dataset):
     def __init__(self, root='/mars/mnt/dgx/FrameNet/scannet-frames/',
                        usage='test',
@@ -87,12 +88,9 @@ class Scannet2DOFAlignmentDataset(Dataset):
         self.root = root
 
     def __getitem__(self, index):
-        data_idx = 0
-        data_split = ''
         if np.random.ranf() < 2./3:
             data_idx = self.idx_e2[index % len(self.idx_e2)]
             data_split = 'e2'
-            # aligned_directions = torch.tensor([0., 1., 0.], dtype=torch.float)
         else:
             data_idx = self.idx_me2[index % len(self.idx_me2)]
             data_split = '-e2'
@@ -108,14 +106,6 @@ class Scannet2DOFAlignmentDataset(Dataset):
             mask_info = color_info.replace('color', 'orient-mask')
             orient_mask_tensor = cv2.resize(sio.imread(mask_info), (320, 240), interpolation=cv2.INTER_NEAREST)
             mask_valid_size = np.sum((orient_mask_tensor > 0))
-        # elif np.random.ranf() < 11./12:
-        #     data_idx = self.idx_me2[index % len(self.idx_me2)]
-        #     data_split = '-e2'
-        #     # aligned_directions = torch.tensor([0., -1., 0.], dtype=torch.float)
-        # else:
-        #     data_idx = self.idx_e3[index % len(self.idx_e3)]
-        #     data_split = 'e3'
-        #     # aligned_directions = torch.tensor([0., 0., 1.], dtype=torch.float)
 
         orient_info = color_info.replace('color', 'normal')
         gravity_info = color_info.replace('color.png', 'gravity.txt')

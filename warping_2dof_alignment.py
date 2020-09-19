@@ -56,56 +56,6 @@ class Warping2DOFAlignment:
         Cg_H_C_inv = self.K @ C_R_Cg @ self.K_inv
         return Cg_H_C, Cg_R_C, Cg_H_C_inv
 
-    def warp_with_gravity_center_aligned(self, x, I_g, I_a, interp_mode='bilinear'):
-        flag_fix_return = False
-        if len(x.shape) == 3:
-            x = x.view(x.shape[0], 1, x.shape[1], x.shape[2])
-            flag_fix_return = True
-
-        Cg_H_C, _, Cg_H_C_inv = self._build_homography(I_g, I_a)
-        Cg_H_C = Cg_H_C.type(torch.float)
-        Cg_H_C_inv = Cg_H_C_inv.type(torch.float)
-
-        grid_sampler = torch.cuda.FloatTensor(x.shape[0], self.H, self.W, 2).fill_(0)
-        Cg_corners_points = torch.cuda.FloatTensor(x.shape[0], 3, 4).fill_(0)
-        Cg_corners_points_projection = torch.cuda.FloatTensor(x.shape[0], 2, 4).fill_(0)
-        C1p_projection = torch.cuda.FloatTensor(x.shape[0], 2, 240*320).fill_(0)
-        C1p = torch.cuda.FloatTensor(x.shape[0], 3, 240 * 320).fill_(0)
-        assert x.shape[0] == I_g.shape[0]
-        for i in range(x.shape[0]):
-            Cg_corners_points[i] = Cg_H_C[i] @ self.corners_points # Need proper broadcast w/ batchsize as input
-            Cg_corners_points_projection[i] = Cg_corners_points[i, 0:2].clone() / Cg_corners_points[i, 2].clone()
-            px_max = torch.max(Cg_corners_points_projection[i, 0].clone())
-            px_min = torch.min(Cg_corners_points_projection[i, 0].clone())
-            py_max = torch.max(Cg_corners_points_projection[i, 1].clone())
-            py_min = torch.min(Cg_corners_points_projection[i, 1].clone())
-
-            h_max = py_max.clone() - py_min.clone()
-            w_max = px_max.clone() - px_min.clone()
-
-            if w_max > 4 * h_max / 3:
-                kw = self.W / w_max.clone()
-                kh = self.H / (3 * w_max.clone() / 4)
-            else:
-                kh = self.H / (h_max.clone())
-                kw = self.W / (4 * h_max.clone() / 3)
-
-            C1p[i] = Cg_H_C_inv[i] @ torch.reshape(torch.cat((1./kw.clone() * (self.XX) + px_min.clone(),
-                                                              1./kh.clone() * (self.YY) + py_min.clone(),
-                                                              torch.ones_like(self.XX)), dim=0), (3, self.W*self.H))
-
-            C1p_projection[i, 0] = C1p[i, 0].clone() / C1p[i, 2].clone()
-            C1p_projection[i, 1] = C1p[i, 1].clone() / C1p[i, 2].clone()
-
-            grid_sampler[i, :, :, 0] = torch.reshape(1. / (self.W / 2) * (C1p_projection[i, 0] - self.cx), (self.W, self.H)).t()
-            grid_sampler[i, :, :, 1] = torch.reshape(1. / (self.H / 2) * (C1p_projection[i, 1] - self.cy), (self.W, self.H)).t()
-
-        y = torch.nn.functional.grid_sample(x, grid_sampler, padding_mode='zeros', mode=interp_mode)
-        if flag_fix_return:
-            return Cg_H_C, y.view(x.shape[0], x.shape[2], x.shape[3])
-        else:
-            return Cg_H_C, y
-
     def image_sampler_forward_inverse(self, I_g, I_a):
         Cg_H_C, Cg_R_C, Cg_H_C_inv = self._build_homography(I_g, I_a)
         Cg_H_C = Cg_H_C.type(torch.float)

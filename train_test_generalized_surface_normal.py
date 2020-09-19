@@ -182,7 +182,6 @@ def log_normal_stats(epoch, iter, normal_error_in_angle, fp=None):
         np.sum(normal_error_in_angle < 30) / normal_error_in_angle.shape[0]))
 
 
-# TODO: clean up this dataset_loader?
 def create_dataset_loader(config):
     # Right now nyud only used for testing
     if config['TEST_DATASET'] == 'nyud':
@@ -384,11 +383,12 @@ if __name__ == '__main__':
         last_ckpt = {'epoch': None, 'iter': None}
 
         # Log info parameters
+        max_num_epoch = 20
         print_every_x_iterations = 60
         evaluate_every_x_iterations = 600
         save_ckpt_every_x_iterations = 6000
 
-        for epoch in range(0, 20):
+        for epoch in range(0, max_num_epoch):
             for iter, sample_batched in enumerate(train_dataloader):
                 cnn.train()
 

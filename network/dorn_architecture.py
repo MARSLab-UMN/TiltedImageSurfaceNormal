@@ -4,8 +4,6 @@ import torch.nn as nn
 import torchvision.models
 import collections
 import math
-from warping_2dof_alignment import Warping2DOFAlignment
-import numpy as np
 
 
 def weights_init(modules, type='xavier'):
@@ -98,14 +96,10 @@ class FullImageEncoder(nn.Module):
 
     def forward(self, x):
         x1 = self.global_pooling(x)
-
-        # print('# x1 size:', x1.size())
         x2 = self.dropout(x1)
         x3 = x2.view(-1, 2048 * 4 * 5)
         x4 = self.relu(self.global_fc(x3))
-        # print('# x4 size:', x4.size())
         x4 = x4.view(-1, 512, 1, 1)
-        # print('# x4 size:', x4.size())
         x5 = self.conv1(x4)
         out = self.upsample(x5)
         return out
@@ -147,42 +141,27 @@ class SceneUnderstandingModuleBN(nn.Module):
             nn.BatchNorm2d(512),
             nn.ReLU(inplace=True)
         )
-        if 'mix_loss' in mode:
-            self.concat_process = nn.Sequential(
-                nn.Dropout2d(p=0.5),
-                nn.Conv2d(512 * 5, 2048, 1),
-                nn.ReLU(inplace=True),
-                nn.Dropout2d(p=0.5),
-                nn.Conv2d(2048, output_channel, 1)
-            )
-        else:
-             self.concat_process = nn.Sequential(
-                nn.Dropout2d(p=0.5),
-                nn.Conv2d(512 * 5, 2048, 1),
-                nn.ReLU(inplace=True),
-                nn.Dropout2d(p=0.5),
-                nn.Conv2d(2048, output_channel, 1),
-                # nn.UpsamplingBilinear2d(scale_factor=8)
-                nn.UpsamplingBilinear2d(size=(240, 320))
-            )
+
+        self.concat_process = nn.Sequential(
+            nn.Dropout2d(p=0.5),
+            nn.Conv2d(512 * 5, 2048, 1),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(p=0.5),
+            nn.Conv2d(2048, output_channel, 1),
+            nn.UpsamplingBilinear2d(size=(240, 320))
+        )
+
         weights_init(self.modules(), type='kaiming')
         self.mode = mode
 
     def forward(self, x):
         x1 = self.encoder(x)
-
         x2 = self.aspp1(x)
         x3 = self.aspp2(x)
         x4 = self.aspp3(x)
         x5 = self.aspp4(x)
-
         x6 = torch.cat((x1, x2, x3, x4, x5), dim=1)
-        # print('cat x6 size:', x6.size())
         out = self.concat_process(x6)
-        if 'mix_loss' in self.mode:
-            # tt_slant = torch.nn.functional.leaky_relu(out[:, 2:3], negative_slope=0.02)
-            z = torch.cat((out[:, 0:2], torch.nn.functional.leaky_relu(out[:, 2:3], negative_slope=0.01)), dim=1)
-            return nn.functional.interpolate(z, size=(240, 320), mode='bilinear')
         return out
 
 
@@ -214,42 +193,26 @@ class SceneUnderstandingModule(nn.Module):
             nn.Conv2d(512, 512, 1),
             nn.ReLU(inplace=True)
         )
-        if 'mix_loss' in mode:
-            self.concat_process = nn.Sequential(
-                nn.Dropout2d(p=0.5),
-                nn.Conv2d(512 * 5, 2048, 1),
-                nn.ReLU(inplace=True),
-                nn.Dropout2d(p=0.5),
-                nn.Conv2d(2048, output_channel, 1)
-            )
-        else:
-             self.concat_process = nn.Sequential(
-                nn.Dropout2d(p=0.5),
-                nn.Conv2d(512 * 5, 2048, 1),
-                nn.ReLU(inplace=True),
-                nn.Dropout2d(p=0.5),
-                nn.Conv2d(2048, output_channel, 1),
-                # nn.UpsamplingBilinear2d(scale_factor=8)
-                nn.UpsamplingBilinear2d(size=(240, 320))
-            )
+
+        self.concat_process = nn.Sequential(
+            nn.Dropout2d(p=0.5),
+            nn.Conv2d(512 * 5, 2048, 1),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(p=0.5),
+            nn.Conv2d(2048, output_channel, 1),
+            nn.UpsamplingBilinear2d(size=(240, 320))
+        )
         weights_init(self.modules(), type='xavier')
         self.mode = mode
 
     def forward(self, x):
         x1 = self.encoder(x)
-
         x2 = self.aspp1(x)
         x3 = self.aspp2(x)
         x4 = self.aspp3(x)
         x5 = self.aspp4(x)
-
         x6 = torch.cat((x1, x2, x3, x4, x5), dim=1)
-        # print('cat x6 size:', x6.size())
         out = self.concat_process(x6)
-        if 'mix_loss' in self.mode:
-            # tt_slant = torch.nn.functional.leaky_relu(out[:, 2:3], negative_slope=0.02)
-            z = torch.cat((out[:, 0:2], torch.nn.functional.leaky_relu(out[:, 2:3], negative_slope=0.01)), dim=1)
-            return nn.functional.interpolate(z, size=(240, 320), mode='bilinear')
         return out
 
 
@@ -270,7 +233,6 @@ class ResNet(nn.Module):
             ('relu1_3', nn.ReLU(inplace=True))
         ]))
         self.bn1 = nn.BatchNorm2d(128)
-        # self.bn1 = pretrained_model._modules['bn1']
         self.relu = pretrained_model._modules['relu']
         self.maxpool = pretrained_model._modules['maxpool']
 
@@ -295,10 +257,6 @@ class ResNet(nn.Module):
             weights_init(self.conv1, type='kaiming')
             weights_init(self.layer1[0].conv1, type='kaiming')
             weights_init(self.layer1[0].downsample[0], type='kaiming')
-            # weights_init(self.layer3[0].conv2, type='kaiming')
-            # weights_init(self.layer3[0].downsample[0], type='kaiming')
-            # weights_init(self.layer4[0].conv2, 'kaiming')
-            # weights_init(self.layer4[0].downsample[0], 'kaiming')
         else:
             weights_init(self.modules(), type='kaiming')
 
@@ -306,26 +264,16 @@ class ResNet(nn.Module):
             self.freeze()
 
     def forward(self, x):
-        # print(pretrained_model._modules)
-
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
 
-        # print('conv1:', x.size())
-
         x = self.maxpool(x)
 
-        # print('pool:', x.size())
-
         x1 = self.layer1(x)
-        # print('layer1 size:', x1.size())
         x2 = self.layer2(x1)
-        # print('layer2 size:', x2.size())
         x3 = self.layer3(x2)
-        # print('layer3 size:', x3.size())
         x4 = self.layer4(x3)
-        # print('layer4 size:', x4.size())
         return x4
 
     def freeze(self):

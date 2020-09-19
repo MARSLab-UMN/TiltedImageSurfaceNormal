@@ -4,8 +4,6 @@ from torch.nn import functional as F
 import torchvision.models
 import collections
 import math
-from warping_2dof_alignment import Warping2DOFAlignment
-import numpy as np
 
 
 def weights_init(modules, type='xavier'):
@@ -105,7 +103,6 @@ class ResNetPyramids(nn.Module):
             ('relu1_3', nn.ReLU(inplace=True))
         ]))
         self.bn1 = nn.BatchNorm2d(128)
-        # self.bn1 = pretrained_model._modules['bn1']
         self.relu = pretrained_model._modules['relu']
         self.maxpool = pretrained_model._modules['maxpool']
 
@@ -118,16 +115,11 @@ class ResNetPyramids(nn.Module):
             self.layer1[0].conv1 = nn.Conv2d(128, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)
             self.layer1[0].downsample[0] = nn.Conv2d(128, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
 
-
         self.layer2 = pretrained_model._modules['layer2']
 
         self.layer3 = pretrained_model._modules['layer3']
-        # self.layer3[0].conv2.stride = (1, 1)
-        # self.layer3[0].downsample[0].stride = (1, 1)
 
         self.layer4 = pretrained_model._modules['layer4']
-        # self.layer4[0].conv2.stride = (1, 1)
-        # self.layer4[0].downsample[0].stride = (1, 1)
 
         # clear memory
         del pretrained_model
@@ -136,10 +128,6 @@ class ResNetPyramids(nn.Module):
             weights_init(self.conv1, type='kaiming')
             weights_init(self.layer1[0].conv1, type='kaiming')
             weights_init(self.layer1[0].downsample[0], type='kaiming')
-            # weights_init(self.layer3[0].conv2, type='kaiming')
-            # weights_init(self.layer3[0].downsample[0], type='kaiming')
-            # weights_init(self.layer4[0].conv2, 'kaiming')
-            # weights_init(self.layer4[0].downsample[0], 'kaiming')
         else:
             weights_init(self.modules(), type='kaiming')
 
@@ -147,32 +135,17 @@ class ResNetPyramids(nn.Module):
             self.freeze()
 
     def forward(self, x):
-        # print(pretrained_model._modules)
-
         x = self.conv1(x)
-        # print(x.shape)
         x = self.bn1(x)
-        # print(x.shape)
         x = self.relu(x)
-        # print(x.shape)
-
-        # print('conv1:', x.size())
 
         x = self.maxpool(x)
-        # print(x.shape)
-
-        # print('pool:', x.size())
 
         x1 = self.layer1(x)
-        # print('layer1 size:', x1.size())
         x2 = self.layer2(x1)
-        # print('layer2 size:', x2.size())
         x3 = self.layer3(x2)
-        # print('layer3 size:', x3.size())
         x4 = self.layer4(x3)
-        # print('layer4 size:', x4.size())
         return {'x1': x1, 'x2': x2, 'x3': x3, 'x4': x4}
-        # return x4
 
     def freeze(self):
         for m in self.modules():
@@ -297,10 +270,8 @@ class PFPN(nn.Module):
         )
 
         self.feature_concat = nn.Sequential(
-            # nn.Dropout2d(0.5),
             nn.Conv2d(128, 64, 3, 1, 1),
             nn.ReLU(inplace=True),
-            # nn.Dropout2d(0.5),
             nn.Conv2d(64, 3, 1),
             nn.UpsamplingBilinear2d(size=(240, 320)),
         )

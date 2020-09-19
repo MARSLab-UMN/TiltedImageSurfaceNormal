@@ -189,7 +189,7 @@ python train_test_generalized_surface_normal.py \
 
 # Training (Coming Soon!)
 
-We will provide the training code at a later point.
+We will provide the training code later.
 
 # Citation
 If you find our work to be useful in your research, please consider citing our paper:
