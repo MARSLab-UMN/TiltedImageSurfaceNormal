@@ -7,6 +7,7 @@ import numpy as np
 import cv2
 import os
 
+
 class KinectAzureDataset(Dataset):
     def __init__(self, root='./datasets/KinectAzure',
                        usage='test_full',

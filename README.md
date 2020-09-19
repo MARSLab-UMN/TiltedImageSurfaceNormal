@@ -13,11 +13,15 @@ In this paper, we present a spatial rectifier to estimate surface normals of til
 
 
 # Installation Guide
-For convenience, all the code in this repositority are assumed to be run inside NVIDIA-Docker. 
 
-### For instructions on installing NVIDIA-Docker, please follow the following steps (note that this is for Ubuntu 18.04):
+Our code can be run inside either *nvidia-docker* **or** *conda environment*. However, **we highly recommend that 
+you run the code using nvidia-docker**.
+
+
+### Using NVIDIA-Docker:
 
 For more detailed instructions, please refer to [this link](https://cnvrg.io/how-to-setup-docker-and-nvidia-docker-2-0-on-ubuntu-18-04/).
+
 1. Install Docker
 
     ```
@@ -84,6 +88,17 @@ Inside the docker, change the working directory to this repository:
 cd /home/PATH/TO/THIS/REPO/TiltedImageSurfaceNormal
 ```
 
+### Using conda:
+The code has been tested with Python 3.6.9, PyTorch 1.1.0, and Cuda 9.0.
+
+```
+conda create --name tilted-sn python=3.6.9
+conda activate tilted-sn
+conda install pytorch==1.1.0 torchvision==0.3.0 cudatoolkit=9.0 -c pytorch
+conda install scikit-image
+conda install opencv
+```
+
 # Datasets and pretrained models
 
 ### Datasets
@@ -95,16 +110,16 @@ the dataset is inside [`./datasets/`](./datasets) folder; otherwise, please chan
 Please run the following commands to automatically download our provided datasets:
 
 ```
-wget -nv -O nyu-normal.zip https://tilted-image-normal.s3.amazonaws.com/nyu-normal.zip && unzip -q nyu-normal.zip -d ./datasets/ && rm -rf nyu-normal.zip
+wget -O nyu-normal.zip https://tilted-image-normal.s3.amazonaws.com/nyu-normal.zip && unzip -q nyu-normal.zip -d ./datasets/ && rm -rf nyu-normal.zip
 
-wget -nv -O KinectAzure.zip https://tilted-image-normal.s3.amazonaws.com/KinectAzure.zip && unzip -q KinectAzure.zip -d ./datasets/ && rm -rf KinectAzure.zip
+wget -O KinectAzure.zip https://tilted-image-normal.s3.amazonaws.com/KinectAzure.zip && unzip -q KinectAzure.zip -d ./datasets/ && rm -rf KinectAzure.zip
 ```
 
 ### Datasets splits
 In order to obtain the exact dataset splits that we used for training/testing, please run the following command to download the `.pkl` files:
 
 ```
-wget -nv -O data.zip https://tilted-image-normal.s3.amazonaws.com/data.zip && unzip -q data.zip -d ./data/ && rm -rf data.zip
+wget -O data.zip https://tilted-image-normal.s3.amazonaws.com/data.zip && unzip -q data.zip -d ./data/ && rm -rf data.zip
 ```
 
 ### Pretrained models
@@ -113,7 +128,7 @@ We provide the checkpoints for all the experimental results reported in the pape
 network architecture, loss function, method, and training dataset. 
 
 ```
-wget -nv -O checkpoints.zip https://tilted-image-normal.s3.amazonaws.com/checkpoints.zip && unzip -q checkpoints.zip -d ./checkpoints/ && rm -rf checkpoints.zip
+wget -O checkpoints.zip https://tilted-image-normal.s3.amazonaws.com/checkpoints.zip && unzip -q checkpoints.zip -d ./checkpoints/ && rm -rf checkpoints.zip
 ```
 
 
@@ -126,14 +141,14 @@ Please follow the below steps to extract surface normals from some RGB images us
 You can also use this command to download ONLY these checkpoints:
 
     ```
-    wget -nv -O DFPN_TAL_SR.ckpt https://tilted-image-normal.s3.amazonaws.com/DFPN_TAL_SR.ckpt && mv DFPN_TAL_SR.ckpt ./checkpoints/
+    wget -O DFPN_TAL_SR.ckpt https://tilted-image-normal.s3.amazonaws.com/DFPN_TAL_SR.ckpt && mv DFPN_TAL_SR.ckpt ./checkpoints/
     
-    wget -nv -O SR_only.ckpt https://tilted-image-normal.s3.amazonaws.com/SR_only.ckpt && mv SR_only.ckpt ./checkpoints/
+    wget -O SR_only.ckpt https://tilted-image-normal.s3.amazonaws.com/SR_only.ckpt && mv SR_only.ckpt ./checkpoints/
     ```
 2) Download our demo RGB images:
 
     ```
-    wget -nv -O demo_dataset.zip https://tilted-image-normal.s3.amazonaws.com/demo_dataset.zip && unzip -q demo_dataset.zip && rm -rf demo_dataset.zip
+    wget -O demo_dataset.zip https://tilted-image-normal.s3.amazonaws.com/demo_dataset.zip && unzip -q demo_dataset.zip && rm -rf demo_dataset.zip
     ```
 3) Run [`inference_script.sh`](./inference_script.sh) to extract the results in [`./demo_results/`](./demo_results).
 
@@ -172,19 +187,9 @@ python train_test_generalized_surface_normal.py \
                      --batch_size BATCH_SIZE
 ```
 
-# Training
+# Training (Coming Soon!)
 
-At this point, we only provide the code for training our surface normal estimation network on ScanNet dataset. 
-We will update the code for training the full *Spatial Rectifier* network pipeline in the future.
-
-Run:
-```
-sh train_script.sh
-```
-
-Specifically, inside the bash script, multiple arguments are needed, including the folder containing log files and checkpoints,
-type of loss functions (L2, AL, or TAL), learning rate, batch size, network architecture, training/testing/validation datasets. 
-Please refer to the actual code for the exact supported arguments options.
+We will provide the training code at a later point.
 
 # Citation
 If you find our work to be useful in your research, please consider citing our paper:

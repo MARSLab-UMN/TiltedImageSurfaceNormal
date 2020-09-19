@@ -9,6 +9,7 @@ import cv2
 import os
 import fnmatch
 
+
 class CustomDataset(Dataset):
     def __init__(self, dataset_path):
         self.to_tensor = transforms.ToTensor()
