@@ -1,6 +1,6 @@
 # DFPN+TAL
 ## Tilted Images on Tilt-RGBD
-python train_test_generalized_surface_normal.py \
+python train_test_surface_normal.py \
                      --checkpoint_path './checkpoints/DFPN_TAL.ckpt' \
                      --operation 'evaluate' \
                      --test_dataset 'kinect_azure_gravity_align' \
@@ -8,7 +8,7 @@ python train_test_generalized_surface_normal.py \
                      --batch_size 128
 
 ## Gravity-aligned Images on Tilt-RGBD
-python train_test_generalized_surface_normal.py \
+python train_test_surface_normal.py \
                      --checkpoint_path './checkpoints/DFPN_TAL.ckpt' \
                      --operation 'evaluate' \
                      --test_dataset 'kinect_azure_tilted' \
@@ -16,7 +16,7 @@ python train_test_generalized_surface_normal.py \
                      --batch_size 128
 
 ## NYUv2
-python train_test_generalized_surface_normal.py \
+python train_test_surface_normal.py \
                      --checkpoint_path './checkpoints/DFPN_TAL.ckpt' \
                      --operation 'evaluate' \
                      --test_dataset 'nyud' \
@@ -24,7 +24,7 @@ python train_test_generalized_surface_normal.py \
                      --batch_size 128
 
 ## ScanNet
-python train_test_generalized_surface_normal.py \
+python train_test_surface_normal.py \
                      --checkpoint_path './checkpoints/DFPN_TAL.ckpt' \
                      --operation 'evaluate' \
                      --test_dataset 'scannet_standard' \
@@ -35,7 +35,7 @@ python train_test_generalized_surface_normal.py \
 
 # DFPN+TAL+SR
 ## Tilted Images on Tilt-RGBD
-python train_test_generalized_surface_normal.py \
+python train_test_surface_normal.py \
                      --checkpoint_path './checkpoints/DFPN_TAL_SR.ckpt' \
                      --sr_checkpoint_path './checkpoints/SR_only.ckpt' \
                      --operation 'evaluate' \
@@ -44,7 +44,7 @@ python train_test_generalized_surface_normal.py \
                      --batch_size 128
 
 ## Gravity-aligned Images on Tilt-RGBD
-python train_test_generalized_surface_normal.py \
+python train_test_surface_normal.py \
                      --checkpoint_path './checkpoints/DFPN_TAL_SR.ckpt' \
                      --sr_checkpoint_path './checkpoints/SR_only.ckpt' \
                      --operation 'evaluate' \
