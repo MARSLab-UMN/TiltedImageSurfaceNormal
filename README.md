@@ -161,14 +161,21 @@ You can also use this command to download ONLY these checkpoints:
 Since the time this paper was published, we've been making some progress towards further improving the results. 
 Thus, we provide the updated evaluation results (on the gravity-aligned and tilted parts of the Tilt-RGBD dataset) in the following table:
 
-|  DATA               | NETWORK     |  MEAN | MEDIAN |  RMSE |  5<sup>o</sup> | 7.5<sup>o</sup> | 11.25<sup>o</sup> | 22.5<sup>o</sup> | 30<sup>o</sup> |
-|-----------------|:------------|:-----:|:------:|:-----:|:------:|:-------:|:---------:|:--------:|:------:|
-| Gravity aligned | PFPN+TAL+SR |  8.57 |   4.67 | 14.89 | 53.54% |  72.05% |    82.40% |   91.91% | **94.38%** |
-| Gravity aligned | DORN+TAL+SR |  **8.30** |   **4.34** | **14.98** | **57.29%** |  **74.77%** |    **84.04%** |   **91.92%** | 94.22% |
-| Gravity aligned | DFPN+TAL+SR (ours) |  8.53 |   4.45 | 14.99 | 55.95% |  72.61% |    82.28% |   91.66% | 94.14% |
-|      Tilted     | PFPN+TAL+SR | 11.10 |   5.51 | 18.84 | 45.66% |  62.66% |    75.19% |   87.35% | 90.71% |
-|      Tilted     | DORN+TAL+SR | 11.12 |   5.31 | 19.09 | 47.34% |  63.80% |    75.14% |   87.17% | 90.46% |
-|      Tilted     | DFPN+TAL+SR (ours) | **10.76** |   **5.15** | **18.52** | **48.70%** |  **64.55%** |    **75.95%** |   **87.77%** | **90.98%** |
+**Gravity-aligned images:**
+
+|NETWORK     |  MEAN|MED.|RMSE|5<sup>o</sup>|7.5<sup>o</sup>|11.25<sup>o</sup>|22.5<sup>o</sup>|30<sup>o</sup>|
+|:-----------------|:-----:|:------:|:-----:|:------:|:-------:|:---------:|:--------:|:------:|
+| PFPN+TAL+SR |  8.57 |   4.67 | 14.89 | 53.54% |  72.05% |    82.40% |   91.91% | **94.38%** |
+| DORN+TAL+SR |  **8.30** |   **4.34** | **14.98** | **57.29%** |  **74.77%** |    **84.04%** |   **91.92%** | 94.22% |
+| DFPN+TAL+SR (ours) |  8.53 |   4.45 | 14.99 | 55.95% |  72.61% |    82.28% |   91.66% | 94.14% |
+
+**Tilted images:**
+
+| NETWORK     |  MEAN|MED.|RMSE|5<sup>o</sup>|7.5<sup>o</sup>|11.25<sup>o</sup>|22.5<sup>o</sup>|30<sup>o</sup>|
+|:------------------|:-----:|:------:|:-----:|:------:|:-------:|:---------:|:--------:|:------:|
+| PFPN+TAL+SR | 11.10 |   5.51 | 18.84 | 45.66% |  62.66% |    75.19% |   87.35% | 90.71% |
+| DORN+TAL+SR | 11.12 |   5.31 | 19.09 | 47.34% |  63.80% |    75.14% |   87.17% | 90.46% |
+| DFPN+TAL+SR (ours) | **10.76** |   **5.15** | **18.52** | **48.70%** |  **64.55%** |    **75.95%** |   **87.77%** | **90.98%** |
 
 We evaluate surface normal estimation on ScanNet, NYUD-v2, or Tilt-RGBD with different network architectures using our provided pre-trained models.
 
