@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 
+
 def compute_surface_normal_angle_error(sample_batched, output_pred, mode='evaluate', angle_type='delta'):
     if 'Z' in sample_batched:
         surface_normal_pred = output_pred
@@ -61,10 +62,6 @@ def compute_surface_normal_angle_error(sample_batched, output_pred, mode='evalua
 
         elif mode == 'train_sr_fpn_full':
             mask = sample_batched['mask'] > 0
-            prediction_error_g = torch.cosine_similarity(surface_normal_pred['I_g'], sample_batched['gravity'],
-                                                       dim=1, eps=1e-6)
-            prediction_error_a = torch.cosine_similarity(surface_normal_pred['I_a'], sample_batched['aligned_directions'],
-                                                       dim=1, eps=1e-6)
             prediction_error = torch.cosine_similarity(surface_normal_pred['n'], sample_batched['Z'], dim=1, eps=1e-6)
 
             # Robust acos loss
@@ -74,18 +71,28 @@ def compute_surface_normal_angle_error(sample_batched, output_pred, mode='evalua
             acos_mask = acos_mask > 0.0
             cos_mask = cos_mask > 0.0
 
-            acos_mask_g = (prediction_error_g.detach() < 0.9999).float() * (prediction_error_g.detach() > 0.0).float()
-            cos_mask_g = (prediction_error_g.detach() <= 0.0).float()
-            acos_mask_g = acos_mask_g > 0.0
-            cos_mask_g = cos_mask_g > 0.0
+            optimize_loss = torch.sum(torch.acos(prediction_error[acos_mask])) - torch.sum(prediction_error[cos_mask])
+            logging_loss = optimize_loss.detach() / (torch.sum(cos_mask) + torch.sum(acos_mask))
 
-            acos_mask_a = (prediction_error_a.detach() < 0.9999).float() * (prediction_error_a.detach() > 0.0).float()
-            cos_mask_a = (prediction_error_a.detach() <= 0.0).float()
-            acos_mask_a = acos_mask_a > 0.0
-            cos_mask_a = cos_mask_a > 0.0
+            if sample_batched['ga_split'] != 'no_ga':
+                prediction_error_g = torch.cosine_similarity(surface_normal_pred['I_g'], sample_batched['gravity'],
+                                                           dim=1, eps=1e-6)
+                prediction_error_a = torch.cosine_similarity(surface_normal_pred['I_a'], sample_batched['aligned_directions'],
+                                                           dim=1, eps=1e-6)
 
-            optimize_loss = torch.sum(torch.acos(prediction_error[acos_mask])) - torch.sum(prediction_error[cos_mask]) + \
-                            76800 * (torch.sum(torch.acos(prediction_error_g[acos_mask_g])) - torch.sum(prediction_error_g[cos_mask_g])) +\
-                            76800 * (torch.sum(torch.acos(prediction_error_a[acos_mask_a])) - torch.sum(prediction_error_a[cos_mask_a]))
-            logging_loss = 0.5*(1.0-torch.mean(prediction_error_g) + 1.0-torch.mean(prediction_error_a))
+                acos_mask_g = (prediction_error_g.detach() < 0.9999).float() * (prediction_error_g.detach() > 0.0).float()
+                cos_mask_g = (prediction_error_g.detach() <= 0.0).float()
+                acos_mask_g = acos_mask_g > 0.0
+                cos_mask_g = cos_mask_g > 0.0
+
+                acos_mask_a = (prediction_error_a.detach() < 0.9999).float() * (prediction_error_a.detach() > 0.0).float()
+                cos_mask_a = (prediction_error_a.detach() <= 0.0).float()
+                acos_mask_a = acos_mask_a > 0.0
+                cos_mask_a = cos_mask_a > 0.0
+
+                optimize_loss = torch.sum(torch.acos(prediction_error[acos_mask])) - torch.sum(prediction_error[cos_mask]) + \
+                                76800 * (torch.sum(torch.acos(prediction_error_g[acos_mask_g])) - torch.sum(prediction_error_g[cos_mask_g])) +\
+                                76800 * (torch.sum(torch.acos(prediction_error_a[acos_mask_a])) - torch.sum(prediction_error_a[cos_mask_a]))
+                logging_loss = 0.5*(1.0-torch.mean(prediction_error_g) + 1.0-torch.mean(prediction_error_a))
+
             return optimize_loss, logging_loss
