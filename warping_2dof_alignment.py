@@ -23,6 +23,9 @@ class Warping2DOFAlignment:
         self.corners_points = torch.tensor(self.corners_points, dtype=torch.float).to(self.device)
         self.I3 = torch.tensor(np.identity(3), dtype=torch.float).to(self.device)
 
+        self.template_principle_dirs = torch.tensor([[0., 1., 0.], [0., -1., 0.], [1., 0., 0.], [-1., 0., 0.]], dtype=torch.float).to(self.device)
+        self.template_principle_dirs = self.template_principle_dirs.transpose(1, 0)
+
     def _skewsymm(self, x):
         if x.shape[0] == 1:
             return torch.tensor([[0.0, -x[0, 2], x[0, 1]], [x[0, 2], 0.0, -x[0, 0]], [-x[0, 1], x[0, 0], 0.0]], dtype=torch.float).to(
@@ -168,5 +171,13 @@ class Warping2DOFAlignment:
         w_x['Z'] = z_n
         w_x['gravity'] = Cg_R_C.bmm(C_g).view(C_g.shape[0], 3)
         w_x['visible_mask'] = y_visible
-        w_x['aligned_directions'] = C_a.view(C_a.shape[0], 3) # Cg_R_C.bmm(C_a).view(C_a.shape[0], 3)
+
+        # Computing the supervised aligned direction
+        g = w_x['gravity'].clone()
+        g = g.view(C_g.shape[0], 1, 3)
+        g_dot_es = torch.bmm(g, self.template_principle_dirs.repeat(C_g.shape[0], 1, 1))
+        closest_principle_dirs = torch.max(g_dot_es.view(C_g.shape[0], -1), dim=1)
+        w_x['aligned_directions'] = self.template_principle_dirs[:, closest_principle_dirs.indices]
+        w_x['aligned_directions'] = w_x['aligned_directions'].transpose(1, 0)
+
         return w_x

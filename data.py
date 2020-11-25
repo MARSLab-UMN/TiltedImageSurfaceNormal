@@ -1,16 +1,19 @@
 from torch.utils.data import DataLoader
 from dataset_loader.dataset_loader_scannet import ScannetDataset
-from dataset_loader.dataset_loader_scannet import Scannet2DOFAlignmentDataset
 from dataset_loader.dataset_loader_nyud import NYUD_Dataset
 from dataset_loader.dataset_loader_kinectazure import KinectAzureDataset
+from dataset_loader.dataset_loader_scannet import Rectified2DOF
+from dataset_loader.dataset_loader_scannet import Full2DOF
+import numpy as np
+import torch
 
 
 def create_dataset_loader(config):
-    # Right now nyud only used for testing
+    # Testing on NYUD
     if config['TEST_DATASET'] == 'nyud':
         train_dataset = NYUD_Dataset()
         train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
-                                        shuffle=True, num_workers=16, pin_memory=True)
+                                      shuffle=True, num_workers=16, pin_memory=True)
 
         test_dataset = NYUD_Dataset()
         test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
@@ -22,10 +25,11 @@ def create_dataset_loader(config):
 
         return train_dataloader, test_dataloader, val_dataloader
 
+    # Testing on KinectAzure
     if 'kinect_azure' in config['TEST_DATASET']:
         train_dataset = KinectAzureDataset()
         train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
-                                        shuffle=True, num_workers=16, pin_memory=True)
+                                      shuffle=True, num_workers=16, pin_memory=True)
 
         if config['TEST_DATASET'] == 'kinect_azure_full':
             test_dataset = KinectAzureDataset(usage='test_full')
@@ -43,42 +47,61 @@ def create_dataset_loader(config):
 
         return train_dataloader, test_dataloader, val_dataloader
 
-    if config['TRAIN_DATASET'] == 'scannet_2dof_alignment':
-        train_dataset = Scannet2DOFAlignmentDataset(usage='train')
+    # ScanNet standard split
+    if 'standard' in config['TRAIN_DATASET']:
+        train_dataset = ScannetDataset(usage='train', train_test_split=config['TRAIN_DATASET'])
+        train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
+                                        shuffle=True, num_workers=16, pin_memory=True)
+
+        test_dataset = ScannetDataset(usage='test', train_test_split=config['TEST_DATASET'])
+        test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
+                                     shuffle=False, num_workers=4)
+
+        val_dataset = ScannetDataset(usage='test', train_test_split=config['TEST_DATASET'])
+        val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
+                                    shuffle=False, num_workers=4)
+
+        return train_dataloader, test_dataloader, val_dataloader
+
+    # rectified_2dofa_scannet/framenet
+    if 'rectified_2dof' in config['TRAIN_DATASET']:
+        train_dataset = Rectified2DOF(usage='train', train_test_split=config['TRAIN_DATASET'])
+        train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
+                                       shuffle=True, num_workers=16, pin_memory=True)
+
+        test_dataset = Rectified2DOF(usage='test', train_test_split=config['TRAIN_DATASET'])
+        test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
+                                       shuffle=True, num_workers=16)
+
+        val_dataset = Rectified2DOF(usage='test', train_test_split=config['TRAIN_DATASET'])
+        val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
+                                       shuffle=True, num_workers=16)
+
+        return train_dataloader, test_dataloader, val_dataloader
+
+    # full_2dof_scannet/framenet
+    if 'full_2dof' in config['TRAIN_DATASET']:
+        train_dataset = Full2DOF(usage='train', train_test_split=config['TRAIN_DATASET'])
         train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
                                       shuffle=True, num_workers=16, pin_memory=True)
 
-        test_dataset = Scannet2DOFAlignmentDataset(usage='test')
+        test_dataset = Full2DOF(usage='test', train_test_split=config['TRAIN_DATASET'])
         test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-                                      shuffle=False, num_workers=16)
+                                      shuffle=True, num_workers=16, pin_memory=True)
 
-        val_dataset = KinectAzureDataset(usage='test_tilted')
+        val_dataset = Full2DOF(usage='test', train_test_split=config['TRAIN_DATASET'])
         val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
-                                    shuffle=False, num_workers=16)
+                                      shuffle=True, num_workers=16, pin_memory=True)
+
         return train_dataloader, test_dataloader, val_dataloader
-
-    # Standard train/test split on ScanNet
-    if config['TEST_DATASET'] == 'scannet_standard':
-        config['TEST_DATASET'] = './data/scannet_standard_train_test_val_split.pkl'
-    if config['TRAIN_DATASET'] == 'scannet_standard':
-        config['TRAIN_DATASET'] = './data/scannet_standard_train_test_val_split.pkl'
-
-    train_dataset = ScannetDataset(usage='train', train_test_split=config['TRAIN_DATASET'])
-    train_dataloader = DataLoader(train_dataset, batch_size=config['BATCH_SIZE'],
-                                    shuffle=True, num_workers=16, pin_memory=True)
-
-    test_dataset = ScannetDataset(usage='test', train_test_split=config['TEST_DATASET'])
-    test_dataloader = DataLoader(test_dataset, batch_size=config['BATCH_SIZE'],
-                                 shuffle=False, num_workers=4)
-
-    val_dataset = ScannetDataset(usage='test', train_test_split=config['TEST_DATASET'])
-    val_dataloader = DataLoader(val_dataset, batch_size=config['BATCH_SIZE'],
-                                shuffle=False, num_workers=4)
 
     return train_dataloader, test_dataloader, val_dataloader
 
 
 def data_augmentation(sample_batched, config, warper, epoch, iter):
+    if 'ga_split' in sample_batched:
+        ga_split = sample_batched['ga_split']
+
     if config['AUGMENTATION'] == 'warp_input':
         gravity_dir = sample_batched['gravity']
         gravity_dir = gravity_dir.cuda()
@@ -105,5 +128,7 @@ def data_augmentation(sample_batched, config, warper, epoch, iter):
 
         alignment_dir = Y_dir.repeat(num_img_in_batch, 1)
         sample_batched = warper.warp_all_with_gravity_center_aligned(sample_batched, I_g=gravity_dir, I_a=alignment_dir)
+
+    sample_batched['ga_split'] = ga_split
 
     return sample_batched

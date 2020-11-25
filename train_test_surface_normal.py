@@ -18,8 +18,7 @@ def parsing_configurations():
     parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--checkpoint_path', type=str, default='')
     parser.add_argument('--rectified_checkpoint_path', type=str, default='')
-    parser.add_argument('--sr_checkpoint_path', type=str,
-                        default='/mars/mnt/oitstorage/tien_storage/FPN_warping/spatial_rectifier_2nd_trial/model-epoch-00016-iter-24000.ckpt')
+    parser.add_argument('--sr_checkpoint_path', type=str, default='./checkpoints/SR_only.ckpt')
     parser.add_argument('--learning_rate', type=float, default=1e-3)
     parser.add_argument('--train_dataset', type=str, default='./data/scannet_standard_train_test_val_split.pkl')
     parser.add_argument('--test_dataset', type=str, default='./data/scannet_standard_train_test_val_split.pkl')
@@ -101,17 +100,18 @@ if __name__ == '__main__':
     warper = Warping2DOFAlignment()
 
     # Step 6. Learning loop
-    if 'train' in config['OPERATION']:
-        # Store a pointer to the last checkpoint
-        last_ckpt = {'epoch': None, 'iter': None}
+    best_median_error = None
 
-        for epoch in range(0, CONFIG['MAX_EPOCH']):
+    if 'train' in config['OPERATION']:
+        for epoch in range(0, config['MAX_EPOCH']):
             for iter, sample_batched in enumerate(train_dataloader):
                 cnn.train()
 
-                sample_batched = {data_key: sample_batched[data_key].cuda() for data_key in sample_batched}
+                for data_key, data_value in sample_batched.items():
+                    if torch.is_tensor(data_value):
+                        sample_batched[data_key] = sample_batched[data_key].cuda()
 
-                if config['AUGMENTATION'] != '':
+                if config['AUGMENTATION'] != '' and sample_batched['ga_split'] != 'no_ga':
                     sample_batched = data_augmentation(sample_batched, config, warper, epoch, iter)
 
                 # zero the parameter gradients
@@ -130,20 +130,17 @@ if __name__ == '__main__':
                 optimizer.step()
 
                 # Step 6e. Print loss value
-                if iter % CONFIG['PRINT_ITER'] == 0:
+                if iter % config['PRINT_ITER'] == 0:
                     log('Epoch %d, Iter %d, Loss %.4f' % (epoch, iter, logging_losses), training_loss_file)
 
                 # Step 6f. Print robust evaluation stats
-                if iter % CONFIG['EVAL_ITER'] == 0:
+                if iter % config['EVAL_ITER'] == 0 and config['OPERATION'] != 'train_SR_only':
                     # Reload closest checkpoint if hit nan
                     if check_nan_ckpt(cnn):
-                        cnn.load_state_dict(torch.load(config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt'
-                                                       % (last_ckpt['epoch'], last_ckpt['iter'])))
+                        cnn.load_state_dict(torch.load(config['LOG_FOLDER'] + '/model-latest.ckpt'))
                         optimizer.load_state_dict(
-                            torch.load(config['LOG_FOLDER'] + '/optimizer-epoch-%05d-iter-%05d.ckpt'
-                                       % (last_ckpt['epoch'], last_ckpt['iter'])))
-                        log('Getting Nan, reloading model from ep: %d, iter: %d'
-                            % (last_ckpt['epoch'], last_ckpt['iter']), training_loss_file)
+                            torch.load(config['LOG_FOLDER'] + '/optimizer-latest.ckpt'))
+                        log('Getting Nan, reloading model from last checkpoint', training_loss_file)
 
                     evaluation_mode = 'evaluate' + config['OPERATION'][len('train'):] if 'mix_loss' in config['OPERATION'] else 'evaluate'
                     total_normal_errors = None
@@ -151,30 +148,55 @@ if __name__ == '__main__':
                     with torch.no_grad():
                         print('<EVALUATION MODE:', evaluation_mode, '>')
                         cnn.eval()
-                        for _, eval_batch in enumerate(test_dataloader): # TODO: val_dataloader
-                            eval_batch = {data_key: eval_batch[data_key].cuda() for data_key in eval_batch}
+                        for _, eval_batch in enumerate(test_dataloader):
+                            # push to cuda
+                            for data_key, data_value in eval_batch.items():
+                                if torch.is_tensor(data_value):
+                                    eval_batch[data_key] = eval_batch[data_key].cuda()
+
                             if config['AUGMENTATION'] == 'warp_input':
                                 eval_batch = data_augmentation(eval_batch, config, warper, epoch, iter)
+
                             output_prediction = forward_cnn(eval_batch, cnn, config)
+
                             if 'sr' in config['ARCHITECTURE']:
                                 surfacenormal_pred = output_prediction['n']
                             else:
                                 surfacenormal_pred = output_prediction
+
                             angle_error_prediction = compute_surface_normal_angle_error(eval_batch,
                                                                                         surfacenormal_pred,
                                                                                         mode=evaluation_mode,
                                                                                         angle_type='delta')
                             accumulate_prediction_error(eval_batch, angle_error_prediction)
+
                         log_normal_stats(epoch, iter, total_normal_errors, evaluate_stat_file)
 
+                        # save the best checkpoint (except train_SR_only as we don't evaluate it)
+                        current_median_error = np.median(total_normal_errors)
+                        if config['OPERATION'] != 'train_SR_only':
+                            if best_median_error is None:
+                                best_median_error = current_median_error
+                                log('Best median error in validation: %f, saving checkpoint epoch %d, iter %d' % (
+                                    best_median_error, epoch, iter))
+                                path = config['LOG_FOLDER'] + '/model-best.ckpt'
+                                torch.save(cnn.state_dict(), path)
+                            else:
+                                if current_median_error < best_median_error:
+                                    best_median_error = current_median_error
+                                    log('Best median error in validation: %f, saving the best checkpoint, epoch %d, iter %d' % (
+                                        best_median_error, epoch, iter))
+                                    path = config['LOG_FOLDER'] + '/model-best.ckpt'
+                                    torch.save(cnn.state_dict(), path)
+
                 # Step 6g. Save checkpoints into file
-                if iter % CONFIG['SAVE_ITER'] == 0:
-                    path = config['LOG_FOLDER'] + '/model-epoch-%05d-iter-%05d.ckpt' % (epoch, iter)
+                if iter % config['SAVE_ITER'] == 0:
+                    # save the latest checkpoint
+                    log('Saving the latest checkpoint (not necessarily the best), epoch %d, iter %d' % (epoch, iter))
+                    path = config['LOG_FOLDER'] + '/model-latest.ckpt'
                     torch.save(cnn.state_dict(), path)
-                    path = config['LOG_FOLDER'] + '/optimizer-epoch-%05d-iter-%05d.ckpt' % (epoch, iter)
+                    path = config['LOG_FOLDER'] + '/optimizer-latest.ckpt'
                     torch.save(optimizer.state_dict(), path)
-                    last_ckpt['epoch'] = epoch
-                    last_ckpt['iter'] = iter
     else:
         cnn.eval()
         total_normal_errors = None

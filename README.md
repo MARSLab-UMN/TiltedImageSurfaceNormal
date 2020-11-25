@@ -184,7 +184,7 @@ Run:
 sh test_script.sh
 ```
 
-Specifically, inside the bash script, multiple arguments are needed, including the path to the pre-trained model, batch size, network architecture, and test dataset (ScanNet/NYUv2/Tilt-RGBD).
+Specifically, inside the bash script, multiple arguments are needed, e.g. the path to the pre-trained model, batch size, network architecture, test dataset (ScanNet/NYUv2/Tilt-RGBD), etc.
 Please refer to the actual code for the exact supported arguments options.
 
 **(Note: make sure you specify the correct network architecture for your pretrained model)**
@@ -201,9 +201,31 @@ python train_test_surface_normal.py \
                      --batch_size BATCH_SIZE
 ```
 
-# Training (Coming Soon!)
+# Training
+### Datasets details
+We train our Spatial Rectifier models using some parts of the ScanNet splits previously used by FrameNet. In the [`data`](./data) folder, we have the following splits that are named based on the following notations:
+1. **2dofa** = set of FrameNet images whose gravity/alignment vectors are well determined.
+2. **(framenet/scannet)_train_test** = set of images that (FrameNet/ScanNet) used for training and testing, respectively.
+3. **rectified_2dofa_(framenet/scannet)** = intersection of **2dofa** and **(framenet/scannet)_train_test**.
+4. **full_2dofa_(framenet/scannet)** = union of **rectified_2dofa_(framenet/scannet)** and **the rest of (framenet/scannet)_train_test**.
 
-We will provide the training code later.
+### Pipeline
+
+Run:
+```
+sh train_script.sh
+```
+
+Specifically, there are three steps in our pipeline:
+
+1. Train the spatial rectifier only.
+
+2. Train the rectified surface normal estimation network.
+
+3. Train the full pipeline end-to-end using the checkpoints from step 1 and 2.
+
+Inside the bash script, multiple arguments are needed, e.g. the dataset, path to the necessary pre-trained models, batch size, network architecture, etc. 
+Please refer to the actual code for the exact supported arguments options.
 
 # Citation
 If you find our work to be useful in your research, please consider citing our paper:
@@ -219,6 +241,8 @@ year = {2020}
 }
 ```
 
+# Contact
+If you have any questions/issues, please create an issue in this repo or contact us at [this email](doxxx104@umn.edu). 
 
 
 

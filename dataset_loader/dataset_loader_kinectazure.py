@@ -15,8 +15,8 @@ class KinectAzureDataset(Dataset):
         # Transforms
         self.root = root
         self.to_tensor = transforms.ToTensor()
-        self.train_test_plit = train_test_split
-        self.data_info = pickle.load(open(train_test_split, 'rb'))[usage]
+        self.train_test_split = train_test_split
+        self.data_info = pickle.load(open(self.train_test_split, 'rb'))[usage]
 
         self.idx = [i for i in range(0, len(self.data_info[0]), 1)]
         self.data_len = len(self.idx)

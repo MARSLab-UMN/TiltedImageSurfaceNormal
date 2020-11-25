@@ -27,7 +27,7 @@ python train_test_surface_normal.py \
 python train_test_surface_normal.py \
                      --checkpoint_path './checkpoints/DFPN_TAL.ckpt' \
                      --operation 'evaluate' \
-                     --test_dataset 'scannet_standard' \
+                     --test_dataset './data/scannet_standard_train_test_val_split.pkl' \
                      --net_architecture 'dfpn' \
                      --batch_size 128
 

@@ -15,8 +15,7 @@ def parsing_configurations():
     parser.add_argument('--operation', type=str, default='inference')
     parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--checkpoint_path', type=str, default='')
-    parser.add_argument('--sr_checkpoint_path', type=str,
-                        default='/mars/mnt/oitstorage/tien_storage/FPN_warping/spatial_rectifier_2nd_trial/model-epoch-00016-iter-24000.ckpt')
+    parser.add_argument('--sr_checkpoint_path', type=str, default='./checkpoints/SR_only.ckpt')
     parser.add_argument('--test_dataset', type=str, default='custom folder')
     parser.add_argument('--net_architecture', type=str, default='sr_dfpn')
 
