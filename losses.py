@@ -74,11 +74,17 @@ def compute_surface_normal_angle_error(sample_batched, output_pred, mode='evalua
             optimize_loss = torch.sum(torch.acos(prediction_error[acos_mask])) - torch.sum(prediction_error[cos_mask])
             logging_loss = optimize_loss.detach() / (torch.sum(cos_mask) + torch.sum(acos_mask))
 
-            if sample_batched['ga_split'] != 'no_ga':
-                prediction_error_g = torch.cosine_similarity(surface_normal_pred['I_g'], sample_batched['gravity'],
-                                                           dim=1, eps=1e-6)
-                prediction_error_a = torch.cosine_similarity(surface_normal_pred['I_a'], sample_batched['aligned_directions'],
-                                                           dim=1, eps=1e-6)
+            rectifier_loss_list = [i for i, split in enumerate(sample_batched['ga_split']) if split != 'no_ga']
+
+            if len(rectifier_loss_list) > 0:
+                rectifier_loss_list = torch.LongTensor(rectifier_loss_list)
+                I_g = surface_normal_pred['I_g'][rectifier_loss_list]
+                I_a = surface_normal_pred['I_a'][rectifier_loss_list]
+                gravity_dir_gt = sample_batched['gravity'][rectifier_loss_list]
+                aligned_dir_gt = sample_batched['aligned_directions'][rectifier_loss_list]
+
+                prediction_error_g = torch.cosine_similarity(I_g, gravity_dir_gt, dim=1, eps=1e-6)
+                prediction_error_a = torch.cosine_similarity(I_a, aligned_dir_gt, dim=1, eps=1e-6)
 
                 acos_mask_g = (prediction_error_g.detach() < 0.9999).float() * (prediction_error_g.detach() > 0.0).float()
                 cos_mask_g = (prediction_error_g.detach() <= 0.0).float()

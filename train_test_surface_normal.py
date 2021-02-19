@@ -202,7 +202,10 @@ if __name__ == '__main__':
         total_normal_errors = None
         with torch.no_grad():
             for iter, sample_batched in enumerate(test_dataloader):
-                sample_batched = {data_key:sample_batched[data_key].cuda() for data_key in sample_batched}
+                for data_key, data_value in sample_batched.items():
+                    if torch.is_tensor(data_value):
+                        sample_batched[data_key] = sample_batched[data_key].cuda()
+
                 output_prediction = forward_cnn(sample_batched, cnn, config)
                 angle_error_prediction = compute_surface_normal_angle_error(sample_batched, output_prediction,
                                                                             mode=config['OPERATION'], angle_type='delta')
